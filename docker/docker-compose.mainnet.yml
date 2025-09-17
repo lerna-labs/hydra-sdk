@@ -1,0 +1,114 @@
+services:
+#  demeter-tunnel:
+#    container_name: demeter-tunnel-${NETWORK}
+#    build:
+#      context: ../scripts
+#      dockerfile: ../docker/Dockerfile.demeter
+#    environment:
+#      - PORT_NAME=${DEMETER_NODE_NAME}
+#      - NAMESPACE=${DEMETER_NAMESPACE}
+#      - API_KEY=${DEMETER_API_KEY}
+#    restart: unless-stopped
+#    volumes:
+#      - "${SCRIPTS_DIR}/config:/tunnel"
+#    networks:
+#      hydra-network:
+#  cardano-node:
+#    container_name: cardano-node-${NETWORK}
+#    image: ${CARDANO_IMAGE}
+#    restart: unless-stopped
+#    environment:
+#      - NETWORK=mainnet
+#      - RESTORE_SNAPSHOT=true
+#    volumes:
+#      - "${SCRIPTS_DIR}/node:/data/db"
+#      - "${SCRIPTS_DIR}/config:/ipc"
+#      - "${SCRIPTS_DIR}/config/mainnet-node.json:/opt/cardano/config/mainnet/config.json:ro"
+#    ports:
+#      - "3001:3001"
+#    networks:
+#      hydra-network:
+  hydra-node:
+    container_name: hydra-node-${NETWORK}
+    image: ${HYDRA_IMAGE}
+    restart: unless-stopped
+    command:
+      [
+        "--node-id",
+        "${NODE_ID}",
+        "--listen",
+        "${LISTEN_HOST}:${LISTEN_PORT}",
+        "--api-host",
+        "${API_HOST}",
+        "--api-port",
+        "${API_PORT}",
+        "--hydra-signing-key",
+        "/mainnet/keys/${NODE_ID}.hydra.sk",
+        "--persistence-dir",
+        "/mainnet/hydra",
+        "--ledger-protocol-parameters",
+        "/mainnet/config/protocol-parameters.json",
+        "--cardano-signing-key",
+        "/mainnet/keys/${NODE_ID}.cardano.sk",
+        # Replacing node socket w/ Blockfrost to test
+        "--node-socket",
+        "/mainnet/config/node.socket",
+        "--mainnet",
+        # The below are commands to run w/ Blockfrost (when it works)
+        # "--blockfrost",
+        # "/mainnet/config/blockfrost.txt",
+        "--hydra-scripts-tx-id",
+        "${HYDRA_TX_ID}",
+        "--persistence-rotate-after",
+        "8640"
+      ]
+    ports:
+      - "${LISTEN_PORT}:${LISTEN_PORT}"
+      - "${API_PORT}:${API_PORT}"
+    volumes:
+      - "${SCRIPTS_DIR}:/mainnet"
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+    networks:
+      hydra-network:
+  hydra-trp:
+    container_name: hydra-trp-${NETWORK}
+    image: ${HYDRA_TRP_IMAGE}
+    restart: always
+    depends_on:
+      - hydra-node
+    ports:
+      - "${TRP_PORT}:${TRP_PORT}"
+    environment:
+      - RUST_LOG=debug
+    volumes:
+      - "${SCRIPTS_DIR}/config:/etc/tx3hydra"
+    networks:
+      hydra-network:
+  express-api:
+    container_name: hydra-express-api-${NETWORK}
+    depends_on:
+      - hydra-trp
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.express
+    working_dir: /usr/src/app
+    ports:
+      - "${EXPRESS_PORT}:${EXPRESS_PORT}"
+    env_file:
+      - ../.env
+      - ../.${NETWORK}.env
+    environment:
+      - NETWORK=${NETWORK}
+      - NODE_ENV=development
+    volumes:
+      - ..:/usr/src/app:delegated
+      - /usr/src/app/node_modules
+    command: [ "npx", "tsx", "watch", "src/index.ts" ]
+    networks:
+      hydra-network:
+    restart: unless-stopped
+networks:
+  hydra-network:
+    name: hydra-network-${NETWORK}
+    driver: bridge
+    external: true

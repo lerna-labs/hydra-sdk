@@ -1,24 +1,22 @@
 services:
-  demeter-tunnel:
-    container_name: demeter-tunnel-${NETWORK}
-    build:
-      context: .
-      dockerfile: Dockerfile.demeter
-    environment:
-      - PORT_NAME=${DEMETER_NODE_NAME}
-      - NAMESPACE=${DEMETER_NAMESPACE}
-      - API_KEY=${DEMETER_API_KEY}
-    restart: unless-stopped
-    volumes:
-      - "${SCRIPTS_DIR}/config:/tunnel"
-    networks:
-      hydra-network:
+#  demeter-tunnel:
+#    container_name: demeter-tunnel-${NETWORK}
+#    build:
+#      context: ../scripts
+#      dockerfile: ../docker/Dockerfile.demeter
+#    environment:
+#      - PORT_NAME=${DEMETER_NODE_NAME}
+#      - NAMESPACE=${DEMETER_NAMESPACE}
+#      - API_KEY=${DEMETER_API_KEY}
+#    restart: unless-stopped
+#    volumes:
+#      - "${SCRIPTS_DIR}/config:/tunnel"
+#    networks:
+#      hydra-network:
   hydra-node:
     container_name: hydra-node-${NETWORK}
     image: ${HYDRA_IMAGE}
     restart: unless-stopped
-    depends_on:
-      - demeter-tunnel
     command:
       [
         "--node-id",
@@ -42,7 +40,9 @@ services:
         "--testnet-magic",
         "${HYDRA_NETWORK_ID}",
         "--hydra-scripts-tx-id",
-        "${HYDRA_TX_ID}"
+        "${HYDRA_TX_ID}",
+        "--persistence-rotate-after",
+        "1000"
       ]
     ports:
       - "${LISTEN_PORT}:${LISTEN_PORT}"
@@ -65,7 +65,31 @@ services:
       - "${SCRIPTS_DIR}/config:/etc/tx3hydra"
     networks:
       hydra-network:
+  express-api:
+    container_name: hydra-express-api-${NETWORK}
+    depends_on:
+      - hydra-trp
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.express
+    working_dir: /usr/src/app
+    ports:
+      - "${EXPRESS_PORT}:${EXPRESS_PORT}"
+    env_file:
+      - ../.env
+      - ../.${NETWORK}.env
+    environment:
+      - NETWORK=${NETWORK}
+      - NODE_ENV=development
+    volumes:
+      - ..:/usr/src/app:delegated
+      - /usr/src/app/node_modules
+    command: [ "npx", "tsx", "watch", "src/index.ts" ]
+    networks:
+      hydra-network:
+    restart: unless-stopped
 networks:
   hydra-network:
     name: hydra-network-${NETWORK}
     driver: bridge
+    external: true

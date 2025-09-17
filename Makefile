@@ -1,4 +1,6 @@
 SHELL := /usr/bin/env bash
+.SHELLFLAGS := -eu -o pipefail -c
+.DEFAULT_GOAL := help
 
 # Load base .env
 ifneq (,$(wildcard .env))
@@ -10,90 +12,152 @@ ifneq (,$(wildcard .$(NETWORK).env))
     include .$(NETWORK).env
 endif
 
-export
+export NETWORK
+export NODE_ID
+export USE_TLS
 
-# Get network-specific compose file
-export COMPOSE_FILE = docker/docker-compose.${NETWORK}.yml
-
-TLS_DIR := ../scripts/$(NETWORK)/tls
+TLS_DIR := ./scripts/$(NETWORK)/tls
 TLS_CERT := $(TLS_DIR)/hydraCert.pem
 TLS_KEY := $(TLS_DIR)/hydraKey.pem
 
+CARDANO_COMPOSE := docker/docker-compose.cardano.yml
+CARDANO_PROJECT := cardano-$(NETWORK)
+DOCKER_CARDANO := docker compose -f $(CARDANO_COMPOSE) -p $(CARDANO_PROJECT)
+
+HYDRA_COMPOSE := docker/docker-compose.$(NETWORK).yml
+HYDRA_PROJECT := hydra-$(NETWORK)
+DOCKER_HYDRA := docker compose -f $(HYDRA_COMPOSE) -p $(HYDRA_PROJECT)
+
 # List of make commands
-HYDRA_TARGETS := up down logs restart status stats check-hydra-keys gen-hydra-keys gen-cardano-keys gen-trp-config gen-tls-cert check-tls-cert
+HYDRA_TARGETS := hydra-start hydra-stop hydra-down hydra-logs hydra-restart hydra-clean hydra-rebuild hydra-status hydra-stats
+CARDANO_TARGETS := cardano-start cardano-stop cardano-logs
+UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert check-tls-cert _guard-network _guard-nodeid _abort-if-exists _check-key-exists _prepare-directories
+.PHONY: $(HYDRA_TARGETS) $(CARDANO_TARGETS) $(UTILITY_TARGETS)
+cardano-start: _guard-network _guard-nodeid _prepare-directories
+	$(DOCKER_CARDANO) up -d
 
-.PHONY: $(HYDRA_TARGETS)
-#.SILENT: $(HYDRA_TARGETS)
+cardano-stop: _guard-network
+	$(DOCKER_CARDANO) stop
 
-up: check-hydra-keys check-tls-cert gen-trp-config
-	docker compose up -d
+cardano-logs: _guard-network
+	$(DOCKER_CARDANO) logs cardano-node -ft --tail=50 | grep -Ev "TrInbound|TrPromoted" || true
 
-down:
-	docker compose down
+hydra-start: _guard-network _guard-nodeid _prepare-directories check-hydra-keys check-cardano-keys check-tls-cert gen-trp-config
+	$(DOCKER_HYDRA) up -d
 
-reset:
-	$(MAKE) down && \
-	sudo rm -rf scripts/${NETWORK}/hydra/* && \
-	$(MAKE) up
+hydra-stop: _guard-network
+	$(DOCKER_HYDRA) stop
 
-logs:
-	docker compose logs -f --tail=100
+hydra-down: _guard-network
+	$(DOCKER_HYDRA) down
 
-restart:
-	$(MAKE) down && $(MAKE) up
+hydra-clean: _guard-network
+	$(DOCKER_HYDRA) down --remove-orphans
 
-rebuild:
-	docker compose build --no-cache --pull && \
-	$(MAKE) up
+hydra-restart: _guard-network
+	$(MAKE) hydra-stop && $(MAKE) hydra-start
 
-status:
-	docker compose ps
+hydra-rebuild: _guard-network
+	$(DOCKER_HYDRA) build --no-cache --pull && \
+	$(MAKE) hydra-start
 
-stats:
-	docker stats $$(docker compose ps --services | xargs -I {} docker compose ps -q {})
+hydra-logs: _guard-network
+	$(DOCKER_HYDRA) logs -ft --tail=50
 
-check-hydra-keys:
-	@if [ "$(NETWORK)" != "offline" ]; then \
-		KEY_PATH="scripts/$(NETWORK)/keys/${NODE_ID}.hydra.sk"; \
-		if [ ! -f "$$KEY_PATH" ]; then \
-			echo "❌ Hydra keys not found at $$KEY_PATH"; \
-			echo "👉 Please generate keys before proceeding:"; \
-			echo "   make NETWORK=$(NETWORK) gen-hydra-keys"; \
-			exit 1; \
-		else \
-			echo "✅ Found Hydra key: $$KEY_PATH"; \
-		fi \
+hydra-status: _guard-network
+	$(DOCKER_HYDRA) ps
+
+hydra-stats: _guard-network
+	@ids=$$($(DOCKER_HYDRA) ps -q); \
+	if [ -n "$$ids" ]; then \
+		docker stats $$ids; \
 	else \
-		echo "🧪 Offline mode — skipping Hydra key check."; \
+		echo "ℹ️  No Hydra containers for project '$(HYDRA_PROJECT)'."; \
 	fi
 
-gen-hydra-keys:
+_guard-network:
 	@if [ -z "$(NETWORK)" ]; then \
-		echo "❌ NETWORK is not set. Please run with:"; \
-		echo "   make NETWORK=<network> gen-hydra-keys"; \
+  		echo "❌ NETWORK is not set. Run:"; \
+  		echo "   make NETWORK=<network> $(MAKECMDGOALS)"; \
+  		exit 1; \
+	fi
+
+_guard-nodeid:
+	@if [ -z "$(NODE_ID)" ]; then \
+		echo "❌ NODE_ID is not set. Please ensure your environment file is loaded."; \
+		echo "👉 e.g.: source .env && make NETWORK=<network> $(MAKECMDGOALS)"; \
 		exit 1; \
 	fi
-	@echo "🔐 Generating Hydra keys for network: $(NETWORK)"
-	docker compose -f "docker/docker-compose.keys.yml" run hydra-key-gen
 
-gen-cardano-keys:
-	@if [ -z "$(NETWORK)" ]; then \
-    		echo "❌ NETWORK is not set. Please run with:"; \
-    		echo "   make NETWORK=<network> gen-hydra-keys"; \
-    		exit 1; \
+_abort-if-exists:
+	@if [ -f "$(KEY_PATH)" ]; then \
+		echo "❌ $(WHAT) key already exists at $(KEY_PATH)"; \
+		echo "👉 Aborting to avoid overwriting existing keys."; \
+		exit 1; \
 	fi
+
+_check-key-exists:
+	@if [ "$(NETWORK)" != "offline" ]; then \
+		if [ ! -f "$(KEY_PATH)" ]; then \
+			echo "❌ $(WHAT) key not found at $(KEY_PATH)"; \
+			echo "👉 Please generate keys before proceeding:"; \
+			echo "   make NETWORK=$(NETWORK) gen-$(what-lc)-keys"; \
+			exit 1; \
+		else \
+			echo "✅ Found $(WHAT) key: $(KEY_PATH)"; \
+		fi; \
+	else \
+		echo "🧪 Offline mode — skipping $(WHAT) key check."; \
+	fi
+
+KEY_DIR := scripts/$(NETWORK)/keys
+export KEY_ROOT := /$(NETWORK)/keys/$(NODE_ID)
+
+check-hydra-keys: _guard-network _guard-nodeid
+	@$(MAKE) --no-print-directory _check-key-exists \
+    		KEY_PATH="$(KEY_DIR)/${NODE_ID}.hydra.sk" \
+    		WHAT="Hydra" what-lc="hydra"
+
+check-cardano-keys: _guard-network _guard-nodeid
+	@$(MAKE) --no-print-directory _check-key-exists \
+    		KEY_PATH="$(KEY_DIR)/${NODE_ID}.cardano.sk" \
+    		WHAT="Cardano" what-lc="cardano"
+
+gen-hydra-keys: _guard-network _guard-nodeid _prepare-directories
+	@$(MAKE) --no-print-directory _abort-if-exists \
+		KEY_PATH="$(KEY_DIR)/${NODE_ID}.hydra.sk" WHAT="Hydra"
+	@echo "🔐 Generating Hydra keys for network: $(NETWORK)"
+	docker compose -f "docker/docker-compose.keys.yml" run --rm hydra-key-gen
+
+gen-cardano-keys: _guard-network _guard-nodeid _prepare-directories
+	@$(MAKE) --no-print-directory _abort-if-exists \
+		KEY_PATH="$(KEY_DIR)/${NODE_ID}.cardano.sk" WHAT="Cardano (signing key)"
+	@$(MAKE) --no-print-directory _abort-if-exists \
+		KEY_PATH="$(KEY_DIR)/${NODE_ID}.cardano.addr" WHAT="Cardano (address)"
 	@echo "🔐 Generating Cardano keys for network: $(NETWORK)"
-	docker compose -f "docker/docker-compose.keys.yml" run cardano-key-gen
+	docker compose -f "docker/docker-compose.keys.yml" run --rm cardano-key-gen
+	@echo "🏗️  Building Cardano address"
+	@if [ "$(NETWORK)" = "mainnet" ]; then \
+		docker compose -f "docker/docker-compose.keys.yml" run --rm cardano-addr-gen-mainnet; \
+	else \
+		docker compose -f "docker/docker-compose.keys.yml" run --rm cardano-addr-gen-testnet; \
+	fi
+
+gen-cardano-address: _guard-network _guard-nodeid _prepare-directories
+	@$(MAKE) --no-print-directory _abort-if-exists \
+		KEY_PATH="$(KEY_DIR)/${NODE_ID}.cardano.addr" WHAT="Cardano (address)"
+	@echo "🏗️  Building Cardano address"
+	@if [ "$(NETWORK)" = "mainnet" ]; then \
+		docker compose -f "docker/docker-compose.keys.yml" run --rm cardano-addr-gen-mainnet; \
+	else \
+		docker compose -f "docker/docker-compose.keys.yml" run --rm cardano-addr-gen-testnet; \
+	fi
 
 gen-trp-config:
 	@echo "Generating TRP config for network=$(NETWORK)..."
 	@./scripts/generate-trp-config.sh
 
-gen-tls-cert:
-	@if [ -z "$(NETWORK)" ]; then \
-	  echo "❌ NETWORK is not set. Example: make NETWORK=preprod gen-cert"; \
-	  exit 1; \
-	fi
+gen-tls-cert: _guard-network
 	@echo "Preparing to generate self-signed cert for network=$(NETWORK)..."
 	@mkdir -p $(TLS_DIR)
 	@if [ -f "$(TLS_CERT)" ] && [ -f "$(TLS_KEY)" ]; then \
@@ -113,12 +177,7 @@ gen-tls-cert:
 	  echo "✅ Created key:  $(TLS_KEY)"; \
 	fi
 
-.PHONY: check-tls-cert
-check-tls-cert:
-	@if [ -z "$(NETWORK)" ]; then \
-	  echo "❌ NETWORK is not set. Example: make NETWORK=preprod check-tls-cert"; \
-	  exit 1; \
-	fi
+check-tls-cert: _guard-network
 	@if [[ "${USE_TLS}" == "1" || "${USE_TLS,,}" == "true" ]]; then \
 	  if [ ! -f "$(TLS_CERT)" ] || [ ! -f "$(TLS_KEY)" ]; then \
 	    echo "❌ USE_TLS is enabled but TLS cert/key are missing."; \
@@ -132,3 +191,17 @@ check-tls-cert:
 	else \
 	  echo "ℹ️  USE_TLS is not enabled; skipping TLS cert presence check."; \
 	fi
+
+CARDANO_DIRS = hydra keys node
+_prepare-directories: _guard-network
+	@for dir in $(CARDANO_DIRS); do \
+		mkdir -p "./scripts/${NETWORK}/${dir}"; \
+	done
+
+help:
+	@echo "Targets:"
+	@echo "  cardano-{start,stop,logs}"
+	@echo "  hydra-{start,stop,down,clean,restart,rebuild,logs,status,stats}"
+	@echo "  gen-hydra-keys / gen-cardano-keys"
+	@echo "  check-hydra-keys / check-cardano-keys"
+	@echo "  gen-trp-config / gen-tls-cert / check-tls-cert"

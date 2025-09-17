@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy the pre-downloaded dmtrctl binary from host
-COPY demeter/dmtrctl /usr/local/bin/dmtrctl
+COPY dmtrctl /usr/local/bin/dmtrctl
 RUN chmod +x /usr/local/bin/dmtrctl
 
 RUN mkdir -p /tunnel

@@ -51,3 +51,4 @@ networks:
   hydra-network:
     name: hydra-network-${NETWORK}
     driver: bridge
+    external: true

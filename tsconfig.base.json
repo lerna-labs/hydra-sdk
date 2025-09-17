@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@hydra-sdk/core": ["packages/core/src/index.ts"],
+      "@hydra-sdk/core/*": ["packages/core/src/*"]
+    },
+    "types": ["node"]
+  }
+}
