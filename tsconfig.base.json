@@ -9,8 +9,8 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@hydra-sdk/core": ["packages/core/src/index.ts"],
-      "@hydra-sdk/core/*": ["packages/core/src/*"]
+      "@lerna-labs/hydra-sdk": ["packages/core/src/index.ts"],
+      "@lerna-labs/hydra-sdk/*": ["packages/core/src/*"]
     },
     "types": ["node"]
   }

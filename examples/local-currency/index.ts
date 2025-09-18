@@ -9,7 +9,7 @@ import {
   createMultisigAddress,
   getAdmin,
   submitTx,
-} from '@hydra-sdk/core';
+} from '@lerna-labs/hydra-sdk';
 import { MeshWallet } from '@meshsdk/core';
 import { Client } from './protocol';
 import { ArgValue } from 'tx3-sdk/trp';
