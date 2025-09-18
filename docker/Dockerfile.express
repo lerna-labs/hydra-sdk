@@ -7,8 +7,8 @@ WORKDIR /usr/src/app
 # Copy package metadata first to leverage layer caching
 COPY ../package*.json ./
 
-# Try clean install; if it fails (lockfile mismatch), fall back to regular install
-RUN if npm ci; then echo "✅ npm ci succeeded"; else echo "⚠️ npm ci failed, falling back to npm install" && npm install; fi
+# Run npm install
+RUN npm install
 
 # Copy tsconfig if used
 COPY ../tsconfig.json ./
