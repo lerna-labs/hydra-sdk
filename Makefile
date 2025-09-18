@@ -154,7 +154,7 @@ gen-cardano-address: _guard-network _guard-nodeid _prepare-directories
 
 gen-trp-config:
 	@echo "Generating TRP config for network=$(NETWORK)..."
-	@./scripts/generate-trp-config.sh
+	@./scripts/generate-trp-config.sh "./scripts/$(NETWORK)/config/config.toml"
 
 gen-tls-cert: _guard-network
 	@echo "Preparing to generate self-signed cert for network=$(NETWORK)..."

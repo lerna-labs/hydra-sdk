@@ -23,6 +23,8 @@ services:
         "0001",
         "--initial-utxo",
         "/offline/config/utxo.json",
+        "--persistence-rotate-after",
+        "1000"
       ]
     ports:
       - "${LISTEN_PORT}:${LISTEN_PORT}"
