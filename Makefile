@@ -12,9 +12,8 @@ ifneq (,$(wildcard .$(NETWORK).env))
     include .$(NETWORK).env
 endif
 
-export NETWORK
-export NODE_ID
-export USE_TLS
+# blank export exports all environment variables for use in other commands
+export
 
 TLS_DIR := ./scripts/$(NETWORK)/tls
 TLS_CERT := $(TLS_DIR)/hydraCert.pem
