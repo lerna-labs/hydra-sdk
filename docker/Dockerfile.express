@@ -14,7 +14,7 @@ RUN if npm ci; then echo "✅ npm ci succeeded"; else echo "⚠️ npm ci failed
 COPY ../tsconfig.json ./
 
 # Copy source
-COPY ../src ./src
+COPY ../packages/middleware/src ./src
 
 EXPOSE 3000
 
