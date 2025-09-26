@@ -10,7 +10,9 @@
     "baseUrl": ".",
     "paths": {
       "@lerna-labs/hydra-sdk": ["packages/core/src/index.ts"],
-      "@lerna-labs/hydra-sdk/*": ["packages/core/src/*"]
+      "@lerna-labs/hydra-sdk/*": ["packages/core/src/*"],
+      "@lerna-labs/hydra-proof": ["packages/proof/src/index.ts"],
+      "@lerna-labs/hydra-proof/*": ["packages/proof/src/*"]
     },
     "types": ["node"]
   }

@@ -1,0 +1,156 @@
+party Admin;
+
+party Sender;
+
+party Receiver;
+
+party Burner;
+
+asset COIN = 0x954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b9."COIN";
+
+env {
+    collateral_utxo: UtxoRef,
+    minting_script: Bytes,
+    user_script: Bytes,
+}
+
+tx mint_coins(
+    quantity: Int,
+    metadata_value: Bytes,
+) {
+    input* gas {
+        from: Admin,
+        min_amount: fees + Ada(1),
+    }
+
+    mint {
+        amount: COIN(quantity),
+    }
+    
+    output {
+        to: Admin,
+        amount: gas - fees,
+    }
+
+    output {
+        to: Receiver,
+        amount: COIN(quantity),
+    }
+
+    cardano::native_witness {
+        script: minting_script,
+    }
+
+    validity {
+        since_slot: 1,
+    }
+
+    metadata {
+        0: metadata_value,
+    }
+
+}
+
+tx burn_coins(
+    quantity: Int,
+) {
+    input* gas {
+        from: Burner,
+        min_amount: COIN(quantity),
+    }
+
+    burn {
+        amount: COIN(quantity),
+    }
+
+    cardano::native_witness {
+        script: minting_script,
+    }
+
+    cardano::native_witness {
+        script: user_script,
+    }
+
+    validity {
+        since_slot: 1,
+    }
+}
+
+tx admin_burn (
+    quantity: Int,
+) {
+    input* gas {
+        from: Admin,
+        min_amount: COIN(quantity),
+    }
+
+    burn {
+        amount: COIN(quantity),
+    }
+
+    cardano::native_witness {
+        script: minting_script,
+    }
+
+    validity {
+        since_slot: 1,
+    }
+}
+
+tx merge_empty (
+    emptyRef: UtxoRef,
+    emptyScript: Bytes,
+) {
+
+    input* gas {
+        from: Admin,
+        min_amount: fees + Ada(1),
+    }
+
+    input empty {
+        ref: emptyRef,
+    }
+
+    output {
+        to: Admin,
+        amount: gas - fees,
+    }
+
+    cardano::native_witness {
+        script: emptyScript,
+    }
+}
+
+tx send_coins(
+    quantity: Int,
+    reason: Bytes,
+    user_signature1: Bytes,
+    user_signature2: Bytes,
+    user_key: Bytes,
+) {
+    input* gas {
+        from: Sender,
+        min_amount: fees + COIN(quantity),
+    }
+
+    output {
+        to: Receiver,
+        amount: COIN(quantity),
+    }
+
+    output {
+        to: Sender,
+        amount: gas - fees - COIN(quantity),
+    }
+
+    cardano::native_witness {
+        script: user_script,
+    }
+
+    metadata {
+        0: reason,
+        1: user_key,
+        2: user_signature1,
+        3: user_signature2,
+    }
+}

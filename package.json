@@ -27,6 +27,7 @@
   "workspaces": {
     "packages": [
       "packages/core",
+      "packages/proof",
       "examples/local-currency"
     ]
   },
@@ -43,7 +44,9 @@
     "@meshsdk/core": "1.9.0-beta.69",
     "@meshsdk/core-csl": "1.9.0-beta.69",
     "@meshsdk/hydra": "1.9.0-beta.69",
+    "@noble/hashes": "^2.0.1",
     "axios": "^1.11.0",
+    "commander": "^14.0.1",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "tx3-sdk": "^0.5.0",
