@@ -7,3 +7,5 @@ scripts/*/keys
 scripts/*/node
 config.toml
 test/*
+packages/core/dist/*
+packages/proof/dist/*
