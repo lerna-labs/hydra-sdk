@@ -44,10 +44,8 @@ services:
     container_name: hydra-express-api-${NETWORK}-${INSTANCE}
     depends_on:
       - hydra-trp
-    build:
-      context: ${EXPRESS_CONTEXT}
-      dockerfile: ${EXPRESS_DOCKERFILE}
-    image: hydra-express-${NETWORK}-${INSTANCE}
+    image: ${EXPRESS_IMAGE}
+    restart: unless-stopped
     env_file:
       - ../.env
       - ../.${NETWORK}.env
@@ -57,10 +55,8 @@ services:
       - NODE_ENV=development
     ports:
       - "${EXPRESS_PORT}:${EXPRESS_PORT}"
-    command: ${MW_CMD:-}
     networks:
       hydra-network:
-    restart: unless-stopped
 networks:
   hydra-network:
     name: hydra-network-${NETWORK}

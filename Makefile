@@ -47,12 +47,12 @@ UTILITY_TARGETS += gen-instance-env reset-instance-counter create-instance extra
 
 _assert-middleware: _guard-network _guard-instance
 	@set -a; . .$(NETWORK).$(INSTANCE).env; set +a; \
-	if [ -z "$${EXPRESS_CONTEXT:-}" ]; then \
-	  echo "❌ EXPRESS_CONTEXT is not set in .$(NETWORK).$(INSTANCE).env"; \
-	  echo "   e.g. EXPRESS_CONTEXT=https://github.com/ekklesia-org/ekklesia-middleware.git#main"; \
+	if [ -z "$${EXPRESS_IMAGE:-}" ]; then \
+	  echo "❌ EXPRESS_IMAGE is not set in .$(NETWORK).$(INSTANCE).env"; \
+	  echo "   e.g. EXPRESS_IMAGE=ghcr.io/lerna-labs/ekklesia-hydra:branch-main"; \
 	  exit 1; \
 	else \
-	  echo "✅ Building middleware from: $$EXPRESS_CONTEXT (Dockerfile=$${EXPRESS_DOCKERFILE:-Dockerfile})"; \
+	  echo "✅ Building middleware from: $$EXPRESS_IMAGE"; \
 	fi
 
 _guard-instance:

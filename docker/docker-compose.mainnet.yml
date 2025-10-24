@@ -55,7 +55,6 @@ services:
       - NODE_ENV=development
     ports:
       - "${EXPRESS_PORT}:${EXPRESS_PORT}"
-    command: ${MW_CMD:-}
     networks:
       hydra-network:
 networks:
