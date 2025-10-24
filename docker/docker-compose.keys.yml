@@ -12,7 +12,7 @@ services:
       [
         "gen-hydra-key",
         "--output-file",
-        "./${NODE_ID}.hydra"
+        "./${INSTANCE}.hydra"
       ]
   cardano-key-gen:
     <<: *keys
@@ -24,9 +24,9 @@ services:
         "address",
         "key-gen",
         "--verification-key-file",
-        "./${NODE_ID}.cardano.vk",
+        "./${INSTANCE}.cardano.vk",
         "--signing-key-file",
-        "./${NODE_ID}.cardano.sk"
+        "./${INSTANCE}.cardano.sk"
       ]
   cardano-addr-gen-mainnet:
     <<: *keys
@@ -38,9 +38,9 @@ services:
         "address",
         "build",
         "--payment-verification-key-file",
-        "./${NODE_ID}.cardano.vk",
+        "./${INSTANCE}.cardano.vk",
         "--out-file",
-        "./${NODE_ID}.cardano.addr",
+        "./${INSTANCE}.cardano.addr",
         "--mainnet"
       ]
   cardano-addr-gen-testnet:
@@ -53,9 +53,9 @@ services:
         "address",
         "build",
         "--payment-verification-key-file",
-        "./${NODE_ID}.cardano.vk",
+        "./${INSTANCE}.cardano.vk",
         "--out-file",
-        "./${NODE_ID}.cardano.addr",
+        "./${INSTANCE}.cardano.addr",
         "--testnet-magic",
         "${CARDANO_TESTNET_MAGIC:-1}"
       ]
