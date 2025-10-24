@@ -28,7 +28,7 @@ export class Wrangler {
     }
 
     private createHydraProvider() {
-        return new HydraProvider({url: this.url, history: false});
+        return new HydraProvider({httpUrl: this.url, history: false});
     }
 
     private createHydraInstance() {
