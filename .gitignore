@@ -6,3 +6,4 @@ scripts/*/hydra
 scripts/*/keys
 scripts/*/node
 config.toml
+test/*

@@ -1,10 +1,10 @@
 {
   "name": "@lerna-labs/hydra-sdk",
-  "version": "1.0.0",
-  "private": true,
+  "version": "1.0.0-beta.0",
+  "private": false,
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -16,6 +16,17 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "tag": "beta"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.8.3"
   }
 }

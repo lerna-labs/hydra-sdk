@@ -1,18 +1,17 @@
 {
-  "name": "hydra-sdk",
-  "version": "1.0.0",
+  "name": "@lerna-labs/hydra-sdk-monorepo",
   "description": "A collection of helpful code and examples for building applications leveraging Hydra technology",
-  "main": "index.js",
   "private": true,
+  "type": "module",
   "directories": {
     "test": "test"
   },
   "scripts": {
     "test": "ts-node packages/core/src/test.ts",
     "start:api": "tsx watch examples/local-currency/index.ts",
-    "hydra:up": "make up",
-    "hydra:down": "make down",
-    "hydra:logs": "make logs"
+    "build": "npm run build -ws",
+    "build:sdk": "npm run build -w @lerna-labs/hydra-sdk",
+    "build:proof": "npm run build -w @lerna-labs/hydra-proof"
   },
   "repository": {
     "type": "git",
