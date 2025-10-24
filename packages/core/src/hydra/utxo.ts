@@ -23,17 +23,11 @@ interface ParsedUtxo {
   }[];
 }
 
-/**
- * Fetches the full UTxO snapshot and filters by address.
- */
-export async function queryUtxoByAddress(address: string): Promise<ParsedUtxo[]> {
-    console.log(`Querying UTxO by Address: ${address}`);
-
+export async function getUtxoSet(): Promise<ParsedUtxo[]> {
   const baseUrl = process.env.HYDRA_API_URL;
-  console.log(`Base Url: ${baseUrl}`);
 
   if (!baseUrl) {
-    throw new Error('HYDRA_API_URL is not defined in the environment variables.');
+    throw new Error("HYDRA_API_URL is not defined in the environment variables!");
   }
 
   const url = `${baseUrl}/snapshot/utxo`;
@@ -42,29 +36,45 @@ export async function queryUtxoByAddress(address: string): Promise<ParsedUtxo[]>
     const response = await axios.get<Record<string, SnapshotUtxo>>(url);
     const data = response.data;
 
-    console.log(`Did get data?`, Object.entries(data).length);
-
-    const result: ParsedUtxo[] = [];
-
+    const UtxoSet: ParsedUtxo[] = [];
     for (const [txKey, utxo] of Object.entries(data)) {
-      if (utxo.address === address) {
-        const [tx_hash, indexStr] = txKey.split('#');
-        const output_index = parseInt(indexStr, 10);
+      const [tx_hash, index_str] = txKey.split("#");
+      const output_index = parseInt(index_str, 10);
+      const amount = Object.entries(utxo.value).map(([unit, quantity]) => ({
+        unit,
+        quantity,
+      }));
 
-        const amount = Object.entries(utxo.value).map(([unit, quantity]) => ({
-          unit,
-          quantity,
-        }));
-
-        result.push({
-          tx_hash,
-          output_index,
-          address: utxo.address,
-          amount,
-        });
-      }
+      UtxoSet.push({
+        tx_hash,
+        output_index,
+        address: utxo.address,
+        amount,
+      });
     }
 
+    return UtxoSet;
+  } catch (error) {
+    console.error("Error fetching the Hydra Ledger?", error);
+    throw error;
+  }
+}
+
+/**
+ * Fetches the full UTxO snapshot and filters by address.
+ */
+export async function queryUtxoByAddress(address: string): Promise<ParsedUtxo[]> {
+    console.log(`Querying UTxO by Address: ${address}`);
+
+
+  try {
+    const result: ParsedUtxo[] = [];
+    const data = await getUtxoSet();
+    for (const utxo of data) {
+      if (utxo.address === address) {
+        result.push(utxo);
+      }
+    }
     return result;
   } catch (error: any) {
     console.error('Failed to fetch or parse UTxO snapshot:', error.message);
