@@ -49,6 +49,78 @@ export class Wrangler {
         await this.provider.connect();
     }
 
+    public async shutdownHead() {
+        this.mode = "shutdown";
+        this.provider.onMessage(msg => this.handleIncoming(msg));
+        await this.provider.connect();
+    }
+
+    public async waitForHeadClose(timeoutMs: 180000): Promise<void> {
+        this.mode = "shutdown";
+        return new Promise(async (resolve, reject) => {
+            let settled = false;
+
+            const handle = async (message: any) => {
+                try {
+                    console.log("Message received: ", message.tag, message);
+                    switch (message.tag) {
+                        case "HeadIsClosed":
+                        case "HeadIsFinalized":
+                            if (settled) return;
+                            settled = true;
+                            resolve();
+                            break;
+                        case "ReadyToFanout":
+                            if (settled) return;
+                            await this.provider.fanout();
+                            break;
+                        case "Greetings":
+                            await this.onGreetings(message.headStatus);
+                            break;
+                    }
+                } catch (err) {
+                    if (!settled) {
+                        settled = true;
+                        reject(err);
+                    }
+                }
+            };
+
+            this.provider.onMessage(handle);
+
+            try {
+                await this.provider.connect();
+            } catch (err) {
+                if (!settled) {
+                    settled = true;
+                    return reject(new Error("Failed to connect to Hydra provider: " + String(err)));
+                }
+            }
+
+            const timer = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    reject(new Error("Timeout waiting for head to close!"));
+                }
+            }, timeoutMs);
+
+            const finalizer = () => clearTimeout(timer);
+
+            const origResolve = resolve;
+            const origReject = reject;
+
+            resolve = (v?: void | PromiseLike<void>) => {
+                finalizer();
+                origResolve(v);
+            };
+
+            reject = (e: any) => {
+                finalizer();
+                origReject(e);
+            };
+        });
+    }
+
     public async waitForHeadOpen(commitArgs: { txHash: string, txIndex: number }, timeoutMs = 180000): Promise<void> {
         this.mode = "start";
         return new Promise(async (resolve, reject) => {
@@ -154,12 +226,6 @@ export class Wrangler {
                 origReject(e);
             };
         });
-    }
-
-    public async shutdownHead() {
-        this.mode = "shutdown";
-        this.provider.onMessage(msg => this.handleIncoming(msg));
-        await this.provider.connect();
     }
 
     private async doCommit(commitArgs: CommitArgs) {
