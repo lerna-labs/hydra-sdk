@@ -5,7 +5,7 @@ import * as CSL from "@emurgo/cardano-serialization-lib-nodejs";
 import {COSESign1} from "@emurgo/cardano-message-signing-nodejs";
 import {Buffer} from "buffer";
 import {default as cbor} from "cbor";
-import {chunkString} from "./chunk-string";
+import {chunkString} from "./chunk-string.js";
 import {bech32} from "bech32";
 
 export const bufferToHex = (buffer: any) => Buffer.from(buffer).toString("hex");
