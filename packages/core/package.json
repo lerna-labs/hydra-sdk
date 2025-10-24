@@ -28,5 +28,12 @@
     "node": ">=18"
   },
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {},
+  "homepage": "https://github.com/Lerna-Labs/hydra-sdk#readme",
+  "bugs": { "url": "https://github.com/Lerna-Labs/hydra-sdk/issues" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lerna-Labs/hydra-sdk",
+    "directory": "packages/core"
+  }
 }
