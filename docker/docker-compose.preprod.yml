@@ -54,7 +54,7 @@ services:
       - NETWORK=${NETWORK}
       - NODE_ENV=development
     ports:
-      - "${EXPRESS_PORT}:${EXPRESS_PORT}"
+      - "${EXPRESS_PORT}:3000"
     networks:
       hydra-network:
 networks:
