@@ -27,7 +27,10 @@ interface ParsedUtxo {
  * Fetches the full UTxO snapshot and filters by address.
  */
 export async function queryUtxoByAddress(address: string): Promise<ParsedUtxo[]> {
+    console.log(`Querying UTxO by Address: ${address}`);
+
   const baseUrl = process.env.HYDRA_API_URL;
+  console.log(`Base Url: ${baseUrl}`);
 
   if (!baseUrl) {
     throw new Error('HYDRA_API_URL is not defined in the environment variables.');
@@ -38,6 +41,8 @@ export async function queryUtxoByAddress(address: string): Promise<ParsedUtxo[]>
   try {
     const response = await axios.get<Record<string, SnapshotUtxo>>(url);
     const data = response.data;
+
+    console.log(`Did get data?`, Object.entries(data).length);
 
     const result: ParsedUtxo[] = [];
 

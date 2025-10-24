@@ -1,58 +1,33 @@
 services:
-  demeter-tunnel:
-    container_name: demeter-tunnel-${NETWORK}
-    build:
-      context: .
-      dockerfile: Dockerfile.demeter
-    environment:
-      - PORT_NAME=${DEMETER_NODE_NAME}
-      - NAMESPACE=${DEMETER_NAMESPACE}
-      - API_KEY=${DEMETER_API_KEY}
-    restart: unless-stopped
-    volumes:
-      - "${SCRIPTS_DIR}/config:/tunnel"
-    networks:
-      hydra-network:
   hydra-node:
-    container_name: hydra-node-${NETWORK}
+    container_name: hydra-node-${NETWORK}-${INSTANCE}
     image: ${HYDRA_IMAGE}
     restart: unless-stopped
-    depends_on:
-      - demeter-tunnel
     command:
       [
-        "--node-id",
-        "${NODE_ID}",
-        "--listen",
-        "${LISTEN_HOST}:${LISTEN_PORT}",
-        "--api-host",
-        "${API_HOST}",
-        "--api-port",
-        "${API_PORT}",
-        "--hydra-signing-key",
-        "/preprod/keys/${NODE_ID}.hydra.sk",
-        "--persistence-dir",
-        "/preprod/hydra",
-        "--ledger-protocol-parameters",
-        "/preprod/config/protocol-parameters.json",
-        "--cardano-signing-key",
-        "/preprod/keys/${NODE_ID}.cardano.sk",
-        "--node-socket",
-        "/preprod/config/node.socket",
-        "--testnet-magic",
-        "${HYDRA_NETWORK_ID}",
-        "--hydra-scripts-tx-id",
-        "${HYDRA_TX_ID}"
+        "--node-id", "${NODE_ID}",
+        "--listen", "${LISTEN_HOST}:${LISTEN_PORT}",
+        "--api-host", "${API_HOST}",
+        "--api-port", "${API_PORT}",
+        "--hydra-signing-key", "/preprod/keys/${INSTANCE}.hydra.sk",
+        "--persistence-dir", "/preprod/hydra/${INSTANCE}",
+        "--ledger-protocol-parameters", "/preprod/config/protocol-parameters.json",
+        "--cardano-signing-key", "/preprod/keys/${INSTANCE}.cardano.sk",
+        "--node-socket","/preprod/config/node.socket",
+        "--testnet-magic","${HYDRA_NETWORK_ID}",
+        "--hydra-scripts-tx-id","${HYDRA_TX_ID}",
+        "--persistence-rotate-after","2250"
       ]
     ports:
       - "${LISTEN_PORT}:${LISTEN_PORT}"
       - "${API_PORT}:${API_PORT}"
     volumes:
       - "${SCRIPTS_DIR}:/preprod"
+      - /etc/ssl/certs:/etc/ssl/certs:ro
     networks:
       hydra-network:
   hydra-trp:
-    container_name: hydra-trp-${NETWORK}
+    container_name: hydra-trp-${NETWORK}-${INSTANCE}
     image: ${HYDRA_TRP_IMAGE}
     restart: always
     depends_on:
@@ -62,9 +37,30 @@ services:
     environment:
       - RUST_LOG=debug
     volumes:
-      - "${SCRIPTS_DIR}/config:/etc/tx3hydra"
+      - "${SCRIPTS_DIR}/config/${INSTANCE}.toml:/etc/tx3hydra/config.toml"
     networks:
       hydra-network:
+  express-api:
+    container_name: hydra-express-api-${NETWORK}-${INSTANCE}
+    depends_on:
+      - hydra-trp
+    build:
+      context: ${EXPRESS_CONTEXT}
+      dockerfile: ${EXPRESS_DOCKERFILE}
+    image: hydra-express-${NETWORK}-${INSTANCE}
+    env_file:
+      - ../.env
+      - ../.${NETWORK}.env
+      - ../.${NETWORK}.${INSTANCE}.env
+    environment:
+      - NETWORK=${NETWORK}
+      - NODE_ENV=development
+    ports:
+      - "${EXPRESS_PORT}:${EXPRESS_PORT}"
+    command: ${MW_CMD:-}
+    networks:
+      hydra-network:
+    restart: unless-stopped
 networks:
   hydra-network:
     name: hydra-network-${NETWORK}

@@ -8,7 +8,7 @@ export async function getAdmin(): Promise<MeshWallet> {
     throw new Error('Admin signing key is not defined!');
   }
 
-  let networkId = parseInt(process.env.HYDRA_NETWORK_ID || '0', 10);
+  let networkId = parseInt(process.env.HYDRA_NETWORK || '0', 10);
 
   if (networkId < 0) {
     networkId = 0;
@@ -29,8 +29,6 @@ export async function getAdmin(): Promise<MeshWallet> {
   if (!wallet.addresses.enterpriseAddressBech32) {
     throw new Error('Wallet failed to initialize!');
   }
-
-  console.log('Admin Wallet', wallet);
 
   return wallet;
 }

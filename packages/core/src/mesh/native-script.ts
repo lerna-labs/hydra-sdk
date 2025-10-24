@@ -23,8 +23,6 @@ export function createMultisigAddress(
   scriptHash?: string,
 } {
 
-  console.log(address1, address2);
-
   const keyHash1 = deserializeAddress(address1).pubKeyHash;
   const keyHash2 = deserializeAddress(address2).pubKeyHash;
 
@@ -42,15 +40,11 @@ export function createMultisigAddress(
     ],
   };
 
-  console.log("Made script?", script);
-
   const { address, scriptCbor } = serializeNativeScript(script, undefined, networkId);
   let scriptHash;
   if (scriptCbor != null) {
     scriptHash = resolveScriptHash(scriptCbor);
   }
-
-  console.log(`Generated Script:`, { address, scriptCbor, scriptHash })
 
   return { address, scriptCbor, scriptHash };
 }

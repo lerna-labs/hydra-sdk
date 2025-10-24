@@ -1,7 +1,9 @@
 node_modules
 .idea
 *.js
-.env
+*.env
 scripts/*/hydra
 scripts/*/keys
+scripts/*/node
 config.toml
+test/*

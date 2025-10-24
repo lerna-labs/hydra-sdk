@@ -23,6 +23,8 @@ services:
         "0001",
         "--initial-utxo",
         "/offline/config/utxo.json",
+        "--persistence-rotate-after",
+        "1000"
       ]
     ports:
       - "${LISTEN_PORT}:${LISTEN_PORT}"
@@ -46,6 +48,29 @@ services:
       - "${SCRIPTS_DIR}/config:/etc/tx3hydra"
     networks:
       hydra-network:
+  express-api:
+    container_name: hydra-express-api-${NETWORK}
+    depends_on:
+      - hydra-trp
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.express
+    working_dir: /usr/src/app
+    ports:
+      - "${EXPRESS_PORT}:${EXPRESS_PORT}"
+    env_file:
+      - ../.env
+      - ../.${NETWORK}.env
+    environment:
+      - NETWORK=${NETWORK}
+      - NODE_ENV=development
+    volumes:
+      - ..:/usr/src/app:delegated
+      - /usr/src/app/node_modules
+    command: [ "npx", "tsx", "watch", "src/index.ts" ]
+    networks:
+      hydra-network:
+    restart: unless-stopped
 
 networks:
   hydra-network:

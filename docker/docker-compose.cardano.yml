@@ -1,0 +1,20 @@
+services:
+  cardano-node:
+    container_name: cardano-node-${NETWORK}
+    image: ${CARDANO_IMAGE}
+    restart: unless-stopped
+    environment:
+      - NETWORK=${NETWORK}
+      - RESTORE_SNAPSHOT=true
+    volumes:
+      - "${SCRIPTS_DIR}/node:/data/db"
+      - "${SCRIPTS_DIR}/config:/ipc"
+      - "${SCRIPTS_DIR}/config/cardano-node.json:/opt/cardano/config/${NETWORK}/config.json:ro"
+    ports:
+      - "${CARDANO_PORT}:3001"
+    networks:
+      hydra-network:
+networks:
+  hydra-network:
+    name: hydra-network-${NETWORK}
+    driver: bridge

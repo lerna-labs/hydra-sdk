@@ -18,11 +18,11 @@ export const DEFAULT_ENV_ARGS = {
 };
 
 export type MintCoinsParams = {
-    admin: ArgValue;
-    metadataValue: ArgValue;
-    mintingScript: ArgValue;
-    quantity: ArgValue;
-    receiver: ArgValue;
+    admin: ArgValue | string; // Address
+    metadataValue: ArgValue | Uint8Array; // Bytes
+    mintingScript: ArgValue | Uint8Array; // Bytes
+    quantity: ArgValue | bigint | number; // Int
+    receiver: ArgValue | string; // Address
 }
 
 export const MINT_COINS_IR = {
@@ -32,38 +32,55 @@ export const MINT_COINS_IR = {
 };
 
 export type BurnCoinsParams = {
-    admin: ArgValue;
-    mintingScript: ArgValue;
-    quantity: ArgValue;
+    burner: ArgValue | string; // Address
+    mintingScript: ArgValue | Uint8Array; // Bytes
+    quantity: ArgValue | bigint | number; // Int
+    userScript: ArgValue | Uint8Array; // Bytes
 }
 
 export const BURN_COINS_IR = {
-    bytecode: "0d030001036761730d02036761730d010561646d696e050e010d030c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e746974790200010000010d010561646d696e05000e020e0210010d02036761730d010561646d696e050e010d030c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e74697479020001000d030c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e74697479020105020000010c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e746974790200010e6e61746976655f7769746e65737301067363726970740d010e6d696e74696e675f73637269707404000000",
+    bytecode: "0d030001036761730d02036761730d01066275726e6572050c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e746974790200010000000105020000010c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e746974790200020e6e61746976655f7769746e65737301067363726970740d010e6d696e74696e675f736372697074040e6e61746976655f7769746e65737301067363726970740d010b757365725f73637269707404000000",
+    encoding: "hex",
+    version: "v1alpha8",
+};
+
+export type AdminBurnParams = {
+    admin: ArgValue | string; // Address
+    mintingScript: ArgValue | Uint8Array; // Bytes
+    quantity: ArgValue | bigint | number; // Int
+}
+
+export const ADMIN_BURN_IR = {
+    bytecode: "0d030001036761730d02036761730d010561646d696e050c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e746974790200010000000105020000010c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e746974790200010e6e61746976655f7769746e65737301067363726970740d010e6d696e74696e675f73637269707404000000",
+    encoding: "hex",
+    version: "v1alpha8",
+};
+
+export type MergeEmptyParams = {
+    admin: ArgValue | string; // Address
+    emptyref: ArgValue | string; // UtxoRef
+    emptyscript: ArgValue | Uint8Array; // Bytes
+}
+
+export const MERGE_EMPTY_IR = {
+    bytecode: "0d030002036761730d02036761730d010561646d696e050e010d030c01000005020001000005656d7074790d0205656d70747900000d0108656d70747972656607000000010d010561646d696e05000e0210010d02036761730d010561646d696e050e010d030c01000005020001000d03000000010e6e61746976655f7769746e65737301067363726970740d010b656d70747973637269707404000000",
     encoding: "hex",
     version: "v1alpha8",
 };
 
 export type SendCoinsParams = {
-    quantity: ArgValue;
-    reason: ArgValue;
-    receiver: ArgValue;
-    sender: ArgValue;
-    userScript: ArgValue;
-    userSignature: ArgValue;
+    quantity: ArgValue | bigint | number; // Int
+    reason: ArgValue | Uint8Array; // Bytes
+    receiver: ArgValue | string; // Address
+    sender: ArgValue | string; // Address
+    userKey: ArgValue | Uint8Array; // Bytes
+    userScript: ArgValue | Uint8Array; // Bytes
+    userSignature1: ArgValue | Uint8Array; // Bytes
+    userSignature2: ArgValue | Uint8Array; // Bytes
 }
 
 export const SEND_COINS_IR = {
-    bytecode: "0d030001036761730d02036761730d010673656e646572050e010d030c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e746974790200010000020d0108726563656976657205000c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e74697479020d010673656e64657205000e020e0210010d02036761730d010673656e646572050e010d030c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e74697479020001000d030c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e7469747902000000010e6e61746976655f7769746e65737301067363726970740d010b757365725f7363726970740400000205000d0106726561736f6e0405020d010e757365725f7369676e617475726504",
-    encoding: "hex",
-    version: "v1alpha8",
-};
-
-export type SendAllParams = {
-    sender: ArgValue;
-}
-
-export const SEND_ALL_IR = {
-    bytecode: "0d030001036761730d02036761730d010673656e646572050d03000100000000000000000000",
+    bytecode: "0d030001036761730d02036761730d010673656e646572050e010d030c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e746974790200010000020d0108726563656976657205000c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e74697479020d010673656e64657205000e020e0210010d02036761730d010673656e646572050e010d030c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e74697479020001000d030c01041c954fe5769e9eb8dad54c99f8d62015c813c24f229a4d98dbf05c28b90704434f494e0d01087175616e7469747902000000010e6e61746976655f7769746e65737301067363726970740d010b757365725f7363726970740400000405000d0106726561736f6e0405020d0108757365725f6b65790405040d010f757365725f7369676e6174757265310405060d010f757365725f7369676e61747572653204",
     encoding: "hex",
     version: "v1alpha8",
 };
@@ -81,25 +98,34 @@ export class Client {
             args,
         });
     }
+
     async burnCoinsTx(args: BurnCoinsParams): Promise<ResolveResponse> {
         return await this.#client.resolve({
             tir: BURN_COINS_IR,
             args,
         });
     }
+
+    async adminBurnTx(args: AdminBurnParams): Promise<ResolveResponse> {
+        return await this.#client.resolve({
+            tir: ADMIN_BURN_IR,
+            args,
+        });
+    }
+
+    async mergeEmptyTx(args: MergeEmptyParams): Promise<ResolveResponse> {
+        return await this.#client.resolve({
+            tir: MERGE_EMPTY_IR,
+            args,
+        });
+    }
+
     async sendCoinsTx(args: SendCoinsParams): Promise<ResolveResponse> {
         return await this.#client.resolve({
             tir: SEND_COINS_IR,
             args,
         });
     }
-    async sendAllTx(args: SendAllParams): Promise<ResolveResponse> {
-        return await this.#client.resolve({
-            tir: SEND_ALL_IR,
-            args,
-        });
-    }
-
 
     async submit(params: SubmitParams): Promise<void> {
         await this.#client.submit(params);

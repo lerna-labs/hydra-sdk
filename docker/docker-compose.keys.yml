@@ -1,36 +1,61 @@
+x-keys: &keys
+  volumes:
+    - "../scripts/${NETWORK}/keys:/keys"
+  working_dir: /keys
+
 services:
   hydra-key-gen:
-    container_name: generate-${NETWORK}-hydra-keys
-    image: ghcr.io/cardano-scaling/hydra-node:0.22.2
-    restart: no
+    <<: *keys
+    image: ${HYDRA_IMAGE}
+    restart: "no"
     command:
       [
         "gen-hydra-key",
         "--output-file",
-        "/${NETWORK}/keys/${NODE_ID}.hydra"
+        "./${NODE_ID}.hydra"
       ]
-    volumes:
-      - "../scripts/${NETWORK}:/${NETWORK}"
-    networks:
-      vending-machine:
   cardano-key-gen:
-    container_name: generate-${NETWORK}-cardano-keys
-    image: ghcr.io/blinklabs-io/cardano-node
-    restart: no
+    <<: *keys
+    image: ${CARDANO_IMAGE}
+    restart: "no"
     command:
       [
         "cli",
         "address",
         "key-gen",
         "--verification-key-file",
-        "/${NETWORK}/keys/${NODE_ID}.cardano.vk",
+        "./${NODE_ID}.cardano.vk",
         "--signing-key-file",
-        "/${NETWORK}/keys/${NODE_ID}.cardano.sk",
+        "./${NODE_ID}.cardano.sk"
       ]
-    volumes:
-      - "../scripts/${NETWORK}:/${NETWORK}"
-    networks:
-      vending-machine:
-networks:
-  vending-machine:
-    driver: bridge
+  cardano-addr-gen-mainnet:
+    <<: *keys
+    image: ${CARDANO_IMAGE}
+    restart: "no"
+    command:
+      [
+        "cli",
+        "address",
+        "build",
+        "--payment-verification-key-file",
+        "./${NODE_ID}.cardano.vk",
+        "--out-file",
+        "./${NODE_ID}.cardano.addr",
+        "--mainnet"
+      ]
+  cardano-addr-gen-testnet:
+    <<: *keys
+    image: ${CARDANO_IMAGE}
+    restart: "no"
+    command:
+      [
+        "cli",
+        "address",
+        "build",
+        "--payment-verification-key-file",
+        "./${NODE_ID}.cardano.vk",
+        "--out-file",
+        "./${NODE_ID}.cardano.addr",
+        "--testnet-magic",
+        "${CARDANO_TESTNET_MAGIC:-1}"
+      ]
