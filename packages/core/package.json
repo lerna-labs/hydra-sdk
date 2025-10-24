@@ -27,7 +27,13 @@
   "engines": {
     "node": ">=18"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@emurgo/cardano-message-signing-nodejs": "^1.1.0",
+    "@emurgo/cardano-serialization-lib-nodejs": "^15.0.1",
+    "@meshsdk/core": "1.9.0-beta.83",
+    "@meshsdk/hydra": "1.9.0-beta.83",
+    "axios": "^1.11.0"
+  },
   "devDependencies": {},
   "homepage": "https://github.com/Lerna-Labs/hydra-sdk#readme",
   "bugs": {
