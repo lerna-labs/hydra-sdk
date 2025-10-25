@@ -49,3 +49,52 @@ export function createMultisigAddress(
   return { address, scriptCbor, scriptHash };
 }
 
+/**
+ * Create a Native Script policy for minting tokens
+ */
+export function createNativeScript(
+  address1: string,
+  networkId: number = 0,
+  scriptType: 'any' | 'all' = 'all',
+  invalidBefore: number | null = null,
+  invalidHereafter: number | null = null,
+): {
+  address: string,
+  scriptCbor?: string,
+  scriptHash?: string,
+} {
+  const keyHash = deserializeAddress(address1).pubKeyHash;
+
+  const script: NativeScript = {
+    type: scriptType,
+    scripts: [
+      {
+        type: 'sig',
+        keyHash,
+      },
+    ],
+  };
+
+  if (invalidBefore) {
+    script.scripts.push({
+      type: 'after',
+      slot: invalidBefore.toString(),
+    });
+  }
+
+  if (invalidHereafter) {
+    script.scripts.push({
+      type: 'before',
+      slot: invalidHereafter.toString(),
+    });
+  }
+
+  const { address, scriptCbor } = serializeNativeScript(script, undefined, networkId);
+  let scriptHash;
+  if (scriptCbor != null) {
+    scriptHash = resolveScriptHash(scriptCbor);
+  }
+
+  return { address, scriptCbor, scriptHash };
+}
+
