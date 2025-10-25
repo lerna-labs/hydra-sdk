@@ -117,6 +117,7 @@ TRP_PORT=${TRP_PORT}
 
 # Instance-specific URLs
 HYDRA_API_URL=http://hydra-node-\${NETWORK}-\${INSTANCE}:\${API_PORT}
+HYDRA_HTTP_URL=http://hydra-node-\${NETWORK}-\${INSTANCE}:\${API_PORT}
 HYDRA_WS_URL=ws://hydra-node-\${NETWORK}-\${INSTANCE}:\${API_PORT}
 TRP_URL=http://hydra-trp-\${NETWORK}-\${INSTANCE}:\${TRP_PORT}
 
