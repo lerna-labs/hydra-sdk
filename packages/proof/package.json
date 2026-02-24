@@ -1,6 +1,17 @@
 {
   "name": "@lerna-labs/hydra-proof",
   "version": "1.0.0-beta.0",
+  "description": "Merkle proof generation and verification using blake2b-256 — zero runtime dependencies",
+  "keywords": [
+    "merkle",
+    "proof",
+    "blake2b",
+    "cardano",
+    "hydra",
+    "integrity",
+    "verification",
+    "typescript"
+  ],
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
