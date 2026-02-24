@@ -9,3 +9,4 @@ config.toml
 test/*
 packages/core/dist/*
 packages/proof/dist/*
+*.tsbuildinfo
