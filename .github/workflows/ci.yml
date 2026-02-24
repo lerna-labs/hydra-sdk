@@ -23,6 +23,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Validate Docker infrastructure
+        run: npx tsx scripts/validate-docker.ts
+
       - name: Lint
         run: npm run lint
 

@@ -42,7 +42,7 @@ CARDANO_TARGETS := cardano-start cardano-stop cardano-logs
 UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert
 UTILITY_TARGETS += check-tls-cert _guard-network _guard-instance _abort-if-exists _check-key-exists _prepare-directories
 UTILITY_TARGETS += gen-instance-env reset-instance-counter create-instance extract-cardano-privkey append-admin-pk _assert-middleware
-UTILITY_TARGETS += test lint typecheck fmt check-releases
+UTILITY_TARGETS += test lint typecheck fmt check-releases validate-docker
 
 .PHONY: $(HYDRA_TARGETS) $(CARDANO_TARGETS) $(UTILITY_TARGETS)
 
@@ -276,6 +276,9 @@ fmt:
 check-releases:
 	./scripts/check-releases.sh
 
+validate-docker:
+	npx tsx scripts/validate-docker.ts
+
 help:
 	@echo "Targets:"
 	@echo "  cardano-{start,stop,logs}"
@@ -284,4 +287,4 @@ help:
 	@echo "  check-hydra-keys / check-cardano-keys"
 	@echo "  gen-trp-config / gen-tls-cert / check-tls-cert"
 	@echo "  test / lint / typecheck / fmt"
-	@echo "  check-releases"
+	@echo "  check-releases / validate-docker"
