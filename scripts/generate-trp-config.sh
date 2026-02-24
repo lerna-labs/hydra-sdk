@@ -1,5 +1,5 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 # Defaults (can be overridden by env)
 : "${TRP_HOST:=0.0.0.0}"

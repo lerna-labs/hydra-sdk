@@ -35,14 +35,16 @@ if [[ -f "${NEW_ENV}" ]]; then
   exit 1
 fi
 
-# Per-network counter lives under scripts/<network>/instances/.counter
-COUNTER_DIR="scripts/${NETWORK}/instances"
-STATE_DIR="scripts/${NETWORK}/hydra/${INSTANCE}"
+# Per-network counter lives under data/<network>/instances/.counter
+COUNTER_DIR="data/${NETWORK}/instances"
+STATE_DIR="data/${NETWORK}/instances/${INSTANCE}/hydra"
 COUNTER_FILE="${COUNTER_DIR}/.counter"
 LOCK_FILE="${COUNTER_FILE}.lock"
 
 mkdir -p "${COUNTER_DIR}"
 mkdir -p "${STATE_DIR}"
+mkdir -p "data/${NETWORK}/instances/${INSTANCE}/keys"
+mkdir -p "data/${NETWORK}/instances/${INSTANCE}/config"
 
 # Decide the offset:
 # - If user provided an explicit offset, use it.

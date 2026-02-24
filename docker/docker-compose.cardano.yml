@@ -7,9 +7,9 @@ services:
       - NETWORK=${NETWORK}
       - RESTORE_SNAPSHOT=true
     volumes:
-      - "${SCRIPTS_DIR}/node:/data/db"
-      - "${SCRIPTS_DIR}/config:/ipc"
-      - "${SCRIPTS_DIR}/config/cardano-node.json:/opt/cardano/config/${NETWORK}/config.json:ro"
+      - "${DATA_DIR}/node:/data/db"
+      - "${DATA_DIR}/config:/ipc"
+      - "${DATA_DIR}/config/cardano-node.json:/opt/cardano/config/${NETWORK}/config.json:ro"
     ports:
       - "${CARDANO_PORT}:3001"
     networks:

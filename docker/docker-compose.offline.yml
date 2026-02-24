@@ -14,15 +14,15 @@ services:
         "--api-port",
         "${API_PORT}",
         "--hydra-signing-key",
-        "/offline/keys/${NODE_ID}.hydra.sk",
+        "/${NETWORK}/keys/${NODE_ID}.hydra.sk",
         "--persistence-dir",
-        "/offline/hydra",
+        "/${NETWORK}/hydra",
         "--ledger-protocol-parameters",
-        "/offline/config/protocol-parameters.json",
+        "/${NETWORK}/config/protocol-parameters.json",
         "--offline-head-seed",
         "0001",
         "--initial-utxo",
-        "/offline/config/utxo.json",
+        "/${NETWORK}/config/utxo.json",
         "--persistence-rotate-after",
         "1000"
       ]
@@ -30,7 +30,9 @@ services:
       - "${LISTEN_PORT}:${LISTEN_PORT}"
       - "${API_PORT}:${API_PORT}"
     volumes:
-      - "${SCRIPTS_DIR}:/offline"
+      - "${DATA_DIR}/config:/${NETWORK}/config:ro"
+      - "${DATA_DIR}/instances/${INSTANCE}/keys:/${NETWORK}/keys:ro"
+      - "${DATA_DIR}/instances/${INSTANCE}/hydra:/${NETWORK}/hydra"
     networks:
       hydra-network:
 
@@ -45,9 +47,10 @@ services:
     environment:
       - RUST_LOG=debug
     volumes:
-      - "${SCRIPTS_DIR}/config:/etc/tx3hydra"
+      - "${DATA_DIR}/instances/${INSTANCE}/config:/etc/tx3hydra:ro"
     networks:
       hydra-network:
+
   express-api:
     container_name: hydra-express-api-${NETWORK}
     depends_on:
@@ -64,9 +67,11 @@ services:
     environment:
       - NETWORK=${NETWORK}
       - NODE_ENV=development
+      - HYDRA_ADMIN_KEY_FILE=/${NETWORK}/keys/${NODE_ID}.cardano.sk
     volumes:
       - ..:/usr/src/app:delegated
       - /usr/src/app/node_modules
+      - "${DATA_DIR}/instances/${INSTANCE}/keys:/${NETWORK}/keys:ro"
     command: [ "npx", "tsx", "watch", "src/index.ts" ]
     networks:
       hydra-network:

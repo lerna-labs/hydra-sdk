@@ -1,6 +1,6 @@
 x-keys: &keys
   volumes:
-    - "../scripts/${NETWORK}/keys:/keys"
+    - "../data/${NETWORK}/instances/${INSTANCE}/keys:/keys"
   working_dir: /keys
 
 services:

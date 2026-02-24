@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 SOCKET_PATH=/tunnel/node.socket
 SOCKET_DIR=$(dirname "$SOCKET_PATH")
@@ -19,7 +20,7 @@ if [ -e "$SOCKET_PATH" ]; then
 fi
 
 # Check required environment variables
-if [ -z "$PORT_NAME" ] || [ -z "$NAMESPACE" ] || [ -z "$API_KEY" ]; then
+if [ -z "${PORT_NAME}" ] || [ -z "${NAMESPACE}" ] || [ -z "${API_KEY}" ]; then
   echo "Missing required env vars: PORT_NAME, NAMESPACE, API_KEY"
   exit 1
 fi

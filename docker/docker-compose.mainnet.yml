@@ -9,11 +9,11 @@ services:
         "--listen", "${LISTEN_HOST}:${LISTEN_PORT}",
         "--api-host", "${API_HOST}",
         "--api-port", "${API_PORT}",
-        "--hydra-signing-key", "/mainnet/keys/${INSTANCE}.hydra.sk",
-        "--persistence-dir", "/mainnet/hydra/${INSTANCE}",
-        "--ledger-protocol-parameters", "/mainnet/config/protocol-parameters.json",
+        "--hydra-signing-key", "/${NETWORK}/keys/${INSTANCE}.hydra.sk",
+        "--persistence-dir", "/${NETWORK}/hydra/${INSTANCE}",
+        "--ledger-protocol-parameters", "/${NETWORK}/config/protocol-parameters.json",
         "--cardano-signing-key", "/mainnet/keys/${NODE_ID}.cardano.sk",
-        "--node-socket", "/mainnet/config/node.socket",
+        "--node-socket", "/${NETWORK}/config/node.socket",
         "--mainnet",
         "--hydra-scripts-tx-id", "${HYDRA_TX_ID}",
         "--persistence-rotate-after", "2250"
@@ -22,7 +22,9 @@ services:
       - "${LISTEN_PORT}:${LISTEN_PORT}"
       - "${API_PORT}:${API_PORT}"
     volumes:
-      - "${SCRIPTS_DIR}:/mainnet"
+      - "${DATA_DIR}/config:/${NETWORK}/config:ro"
+      - "${DATA_DIR}/instances/${INSTANCE}/keys:/${NETWORK}/keys:ro"
+      - "${DATA_DIR}/instances/${INSTANCE}/hydra:/${NETWORK}/hydra/${INSTANCE}"
       - /etc/ssl/certs:/etc/ssl/certs:ro
     networks:
       hydra-network:
@@ -37,7 +39,7 @@ services:
     environment:
       - RUST_LOG=debug
     volumes:
-      - "${SCRIPTS_DIR}/config/${INSTANCE}.toml:/etc/tx3hydra/config.toml"
+      - "${DATA_DIR}/instances/${INSTANCE}/config/trp.toml:/etc/tx3hydra/config.toml:ro"
     networks:
       hydra-network:
   express-api:
@@ -53,6 +55,9 @@ services:
     environment:
       - NETWORK=${NETWORK}
       - NODE_ENV=development
+      - HYDRA_ADMIN_KEY_FILE=/${NETWORK}/keys/${INSTANCE}.cardano.sk
+    volumes:
+      - "${DATA_DIR}/instances/${INSTANCE}/keys:/${NETWORK}/keys:ro"
     ports:
       - "${EXPRESS_PORT}:3000"
     networks:

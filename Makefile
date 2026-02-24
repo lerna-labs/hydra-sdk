@@ -21,12 +21,54 @@ endif
 export
 export DOCKER_BUILDKIT := 1
 
-KEY_DIR := scripts/$(NETWORK)/keys
+# ── Directory Layout ─────────────────────────────────────────────────
+#
+#   data/
+#     {network}/
+#       config/              Static network config (git-tracked)
+#       node/                Cardano node ledger DB + socket (gitignored)
+#       tls/                 TLS certificates (gitignored)
+#       instances/           Per-Hydra-head isolation (gitignored)
+#         .counter           Port offset tracker
+#         {instance}/
+#           keys/            Hydra + Cardano signing/verification keys
+#           hydra/           Hydra persistence state
+#           config/          Instance-specific TRP config (trp.toml)
+#
+#   scripts/                 Automation tools only (git-tracked)
+#
+# ── Instance Lifecycle ───────────────────────────────────────────────
+#
+#   1. make NETWORK=preprod INSTANCE=alpha create-instance
+#      → generates .preprod.alpha.env, keys, sets HYDRA_ADMIN_KEY_FILE
+#   2. make NETWORK=preprod INSTANCE=alpha hydra-start
+#      → starts hydra-node, hydra-trp, express-api for that instance
+#
+# ── Environment Layering ─────────────────────────────────────────────
+#
+#   .env                     Base (images, common settings)
+#   .{NETWORK}.env           Network-specific (ports, tx IDs, DATA_DIR)
+#   .{NETWORK}.{INSTANCE}.env  Instance-specific (port offsets, API keys)
+#
+# ── Port Offset Logic ────────────────────────────────────────────────
+#
+#   Each instance gets a unique port offset added to the base ports
+#   defined in .{NETWORK}.env. The offset is auto-incremented via
+#   data/{network}/instances/.counter, or can be passed manually:
+#     make NETWORK=preprod INSTANCE=beta gen-instance-env OFFSET=3
+#
+# ─────────────────────────────────────────────────────────────────────
+
+DATA_DIR_LOCAL := data/$(NETWORK)
+INSTANCE_DIR := $(DATA_DIR_LOCAL)/instances/$(INSTANCE)
+KEY_DIR := $(INSTANCE_DIR)/keys
 export KEY_ROOT := /$(NETWORK)/keys/$(INSTANCE)
 
-TLS_DIR := ./scripts/$(NETWORK)/tls
+TLS_DIR := $(DATA_DIR_LOCAL)/tls
 TLS_CERT := $(TLS_DIR)/hydraCert.pem
 TLS_KEY := $(TLS_DIR)/hydraKey.pem
+
+CONFIG_DIR := $(DATA_DIR_LOCAL)/config
 
 CARDANO_COMPOSE := docker/docker-compose.cardano.yml
 CARDANO_PROJECT := cardano-$(NETWORK)
@@ -70,11 +112,16 @@ _guard-network:
   		exit 1; \
 	fi
 
-CARDANO_DIRS = hydra keys node instances
+DATA_DIRS = config node tls
 _prepare-directories: _guard-network
-	@for dir in $(CARDANO_DIRS); do \
-		mkdir -p "./scripts/${NETWORK}/${dir}"; \
+	@for dir in $(DATA_DIRS); do \
+		mkdir -p "./data/${NETWORK}/$${dir}"; \
 	done
+	@if [ -n "$(INSTANCE)" ]; then \
+		mkdir -p "./data/${NETWORK}/instances/$(INSTANCE)/keys"; \
+		mkdir -p "./data/${NETWORK}/instances/$(INSTANCE)/hydra"; \
+		mkdir -p "./data/${NETWORK}/instances/$(INSTANCE)/config"; \
+	fi
 
 cardano-start: _prepare-directories
 	$(DOCKER_CARDANO) up -d
@@ -139,23 +186,23 @@ _check-key-exists:
 		echo "🧪 Offline mode — skipping $(WHAT) key check."; \
 	fi
 
-check-hydra-keys: _guard-instance _prepare-directories
+check-hydra-keys: _guard-network _guard-instance _prepare-directories
 	@$(MAKE) --no-print-directory _check-key-exists \
     		KEY_PATH="$(KEY_DIR)/${INSTANCE}.hydra.sk" \
     		WHAT="Hydra" what-lc="hydra"
 
-check-cardano-keys: _guard-instance _prepare-directories
+check-cardano-keys: _guard-network _guard-instance _prepare-directories
 	@$(MAKE) --no-print-directory _check-key-exists \
     		KEY_PATH="$(KEY_DIR)/${INSTANCE}.cardano.sk" \
     		WHAT="Cardano" what-lc="cardano"
 
-gen-hydra-keys: _guard-instance _prepare-directories
+gen-hydra-keys: _guard-network _guard-instance _prepare-directories
 	@$(MAKE) --no-print-directory _abort-if-exists \
-		KEY_PATH="$(KEY_DIR)/${instance}.hydra.sk" WHAT="Hydra"
+		KEY_PATH="$(KEY_DIR)/${INSTANCE}.hydra.sk" WHAT="Hydra"
 	@echo "🔐 Generating Hydra keys for $(INSTANCE) instance on $(NETWORK) network"
 	docker compose -f "docker/docker-compose.keys.yml" run --rm hydra-key-gen
 
-gen-cardano-keys: _guard-instance _prepare-directories
+gen-cardano-keys: _guard-network _guard-instance _prepare-directories
 	@$(MAKE) --no-print-directory _abort-if-exists \
 		KEY_PATH="$(KEY_DIR)/${INSTANCE}.cardano.sk" WHAT="Cardano (signing key)"
 	@$(MAKE) --no-print-directory _abort-if-exists \
@@ -169,7 +216,7 @@ gen-cardano-keys: _guard-instance _prepare-directories
 		docker compose -f "docker/docker-compose.keys.yml" run --rm cardano-addr-gen-testnet; \
 	fi
 
-gen-cardano-address: _guard-instance _prepare-directories
+gen-cardano-address: _guard-network _guard-instance _prepare-directories
 	@$(MAKE) --no-print-directory _abort-if-exists \
 		KEY_PATH="$(KEY_DIR)/${INSTANCE}.cardano.addr" WHAT="Cardano (address)"
 	@echo "🏗️  Building Cardano address"
@@ -179,9 +226,9 @@ gen-cardano-address: _guard-instance _prepare-directories
 		docker compose -f "docker/docker-compose.keys.yml" run --rm cardano-addr-gen-testnet; \
 	fi
 
-gen-trp-config: _guard-network
-	@echo "Generating TRP config for network=$(NETWORK)..."
-	@./scripts/generate-trp-config.sh "./scripts/$(NETWORK)/config/$(INSTANCE).toml"
+gen-trp-config: _guard-network _guard-instance
+	@echo "Generating TRP config for network=$(NETWORK) instance=$(INSTANCE)..."
+	@./scripts/generate-trp-config.sh "./data/$(NETWORK)/instances/$(INSTANCE)/config/trp.toml"
 
 gen-tls-cert: _guard-network
 	@echo "Preparing to generate self-signed cert for network=$(NETWORK)..."
@@ -203,23 +250,23 @@ gen-tls-cert: _guard-network
 	  echo "✅ Created key:  $(TLS_KEY)"; \
 	fi
 
-gen-instance-env: _guard-instance _prepare-directories
+gen-instance-env: _guard-network _guard-instance _prepare-directories
 	@echo "🧬 Generating instance env for NETWORK=$(NETWORK) INSTANCE=$(INSTANCE)"
 	@OFFSET_ARG=$${OFFSET:+$$OFFSET}; \
 	bash ./scripts/generate-instance-env.sh "$(NETWORK)" "$(INSTANCE)" $$OFFSET_ARG
 
 reset-instance-counter: _guard-network
-	@mkdir -p "scripts/$(NETWORK)/instances"
-	@echo "0" > "scripts/$(NETWORK)/instances/.counter"
+	@mkdir -p "data/$(NETWORK)/instances"
+	@echo "0" > "data/$(NETWORK)/instances/.counter"
 	@echo "🔄 Reset counter for NETWORK=$(NETWORK) to 0"
 
-extract-cardano-privkey: _guard-instance _prepare-directories
+extract-cardano-privkey: _guard-network _guard-instance _prepare-directories
 	@SKEY_FILE=""; \
-	for f in "scripts/$(NETWORK)/keys/$(INSTANCE).cardano.skey" "scripts/$(NETWORK)/keys/$(INSTANCE).cardano.sk"; do \
+	for f in "data/$(NETWORK)/instances/$(INSTANCE)/keys/$(INSTANCE).cardano.skey" "data/$(NETWORK)/instances/$(INSTANCE)/keys/$(INSTANCE).cardano.sk"; do \
 	  if [ -f "$$f" ]; then SKEY_FILE="$$f"; break; fi; \
 	done; \
 	if [ -z "$$SKEY_FILE" ]; then \
-	  echo "❌ Could not find Cardano Skey for INSTANCE=$(INSTANCE) under scripts/$(NETWORK)/keys/" >&2; \
+	  echo "❌ Could not find Cardano Skey for INSTANCE=$(INSTANCE) under data/$(NETWORK)/instances/$(INSTANCE)/keys/" >&2; \
 	  exit 1; \
 	fi; \
 	if ! command -v jq >/dev/null 2>&1; then \
@@ -231,20 +278,20 @@ extract-cardano-privkey: _guard-instance _prepare-directories
 	fi; \
 	echo "$$PK"
 
-append-admin-pk: _guard-instance _prepare-directories
+append-admin-pk: _guard-network _guard-instance _prepare-directories
 	@PK=$$($(MAKE) -s NETWORK=$(NETWORK) INSTANCE=$(INSTANCE) extract-cardano-privkey); \
 	printf "\nHYDRA_ADMIN_CARDANO_PK=%s\n" "$$PK" >> ".${NETWORK}.${INSTANCE}.env"; \
 	echo "🔐 Appended HYDRA_ADMIN_CARDANO_PK to .${NETWORK}.${INSTANCE}.env"
 
-create-instance: _guard-instance _prepare-directories
+create-instance: _guard-network _guard-instance _prepare-directories
 	@echo "🚀 Creating instance: NETWORK=$(NETWORK) INSTANCE=$(INSTANCE)"
 	@$(MAKE) --no-print-directory gen-instance-env
 	@set -a; . .$(NETWORK).$(INSTANCE).env; set +a; \
       echo "🔑 Generating keys for INSTANCE=$(INSTANCE)..."; \
       $(MAKE) --no-print-directory NETWORK=$(NETWORK) INSTANCE=$(INSTANCE) gen-hydra-keys; \
       $(MAKE) --no-print-directory NETWORK=$(NETWORK) INSTANCE=$(INSTANCE) gen-cardano-keys; \
-      $(MAKE) --no-print-directory NETWORK=$(NETWORK) INSTANCE=$(INSTANCE) append-admin-pk; \
-      echo "✅ Instance ready: .$(NETWORK).$(INSTANCE).env includes X_API_KEY and HYDRA_ADMIN_CARDANO_PK"
+      echo "HYDRA_ADMIN_KEY_FILE=/${NETWORK}/keys/$(INSTANCE).cardano.sk" >> ".${NETWORK}.${INSTANCE}.env"; \
+      echo "✅ Instance ready: .$(NETWORK).$(INSTANCE).env includes X_API_KEY and HYDRA_ADMIN_KEY_FILE"
 
 check-tls-cert: _guard-network
 	@if [[ "${USE_TLS}" == "1" || "${USE_TLS,,}" == "true" ]]; then \
@@ -280,11 +327,55 @@ validate-docker:
 	npx tsx scripts/validate-docker.ts
 
 help:
-	@echo "Targets:"
-	@echo "  cardano-{start,stop,logs}"
-	@echo "  hydra-{start,stop,down,clean,restart,rebuild,logs,status,stats}"
-	@echo "  gen-hydra-keys / gen-cardano-keys"
-	@echo "  check-hydra-keys / check-cardano-keys"
-	@echo "  gen-trp-config / gen-tls-cert / check-tls-cert"
-	@echo "  test / lint / typecheck / fmt"
-	@echo "  check-releases / validate-docker"
+	@echo ""
+	@echo "Usage: make NETWORK=<network> [INSTANCE=<id>] <target>"
+	@echo ""
+	@echo "── Cardano Node ────────────────────────────────────────────"
+	@echo "  cardano-start            Start Cardano node for NETWORK"
+	@echo "  cardano-stop             Stop Cardano node"
+	@echo "  cardano-logs             Tail Cardano node logs"
+	@echo ""
+	@echo "── Hydra Instance ──────────────────────────────────────────"
+	@echo "  hydra-start              Start hydra-node + TRP + express-api"
+	@echo "  hydra-stop               Stop Hydra services"
+	@echo "  hydra-down               Stop and remove Hydra containers"
+	@echo "  hydra-clean              Stop, remove containers + orphans"
+	@echo "  hydra-restart            Restart Hydra services"
+	@echo "  hydra-rebuild            Rebuild images (no cache) and start"
+	@echo "  hydra-logs               Tail Hydra service logs"
+	@echo "  hydra-status             Show container status"
+	@echo "  hydra-stats              Show live container resource usage"
+	@echo ""
+	@echo "── Instance Management ─────────────────────────────────────"
+	@echo "  create-instance          Full setup: env + keys + admin key"
+	@echo "  gen-instance-env         Generate .NETWORK.INSTANCE.env with port offsets"
+	@echo "  reset-instance-counter   Reset port offset counter to 0"
+	@echo "  append-admin-pk          Extract and append admin PK to instance env"
+	@echo "  extract-cardano-privkey  Print Cardano signing key cborHex"
+	@echo ""
+	@echo "── Key & Certificate Generation ────────────────────────────"
+	@echo "  gen-hydra-keys           Generate Hydra signing/verification keys"
+	@echo "  gen-cardano-keys         Generate Cardano signing/verification keys + address"
+	@echo "  gen-cardano-address      Generate Cardano address from existing vk"
+	@echo "  gen-trp-config           Generate TRP config (trp.toml) for instance"
+	@echo "  gen-tls-cert             Generate self-signed TLS certificate"
+	@echo "  check-hydra-keys         Verify Hydra keys exist"
+	@echo "  check-cardano-keys       Verify Cardano keys exist"
+	@echo "  check-tls-cert           Verify TLS cert exists (if USE_TLS=1)"
+	@echo ""
+	@echo "── Development ─────────────────────────────────────────────"
+	@echo "  test                     Run Vitest test suite"
+	@echo "  lint                     Run Biome linter"
+	@echo "  typecheck                Run TypeScript type checker"
+	@echo "  fmt                      Auto-fix lint issues"
+	@echo "  check-releases           Check upstream dependency releases"
+	@echo "  validate-docker          Validate Docker infrastructure config"
+	@echo ""
+	@echo "── Port Allocation (base ports per network) ────────────────"
+	@echo "  Network   Cardano  Express  API   Listen  TRP"
+	@echo "  offline   3001     3000     4000  5000    8165"
+	@echo "  preprod   3100     3101     4101  5101    8265"
+	@echo "  mainnet   3000     3001     4001  5001    8165"
+	@echo ""
+	@echo "  Per-instance ports = base + offset (auto-incremented)"
+	@echo ""
