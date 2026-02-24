@@ -1,5 +1,7 @@
 import { BlockfrostProvider } from '@meshsdk/core';
+import type { hydraStatus } from '@meshsdk/hydra';
 import { HydraInstance, HydraProvider } from '@meshsdk/hydra';
+import type { HeadStatus, HydraWsMessage } from '../hydra/messages.js';
 
 const BLOCKFROST_KEY = process.env.BLOCKFROST_API_KEY as string;
 if (!BLOCKFROST_KEY) throw new Error('BLOCKFROST_API_KEY not set');
@@ -54,93 +56,119 @@ export class Wrangler {
     });
   }
 
-  /** Connect the underlying HydraProvider WebSocket. */
+  /**
+   * Connect to the Hydra node with exponential-backoff retry.
+   *
+   * Uses `HydraProvider.isConnected()` which establishes the WebSocket
+   * **and** waits for the Hydra `Greetings` handshake, unlike the raw
+   * `connect()` which only opens the socket.
+   *
+   * @param maxAttempts - Maximum number of connection attempts (default 5).
+   * @param baseDelayMs - Initial retry delay in milliseconds (default 1000). Doubles each attempt, capped at 30 s.
+   */
+  private async connectWithRetry(maxAttempts = 5, baseDelayMs = 1000): Promise<void> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const connected = await this.provider.isConnected();
+        if (connected) return;
+        throw new Error('isConnected() returned false');
+      } catch (err) {
+        if (attempt === maxAttempts - 1) {
+          throw new Error(`Failed to connect after ${maxAttempts} attempts: ${String(err)}`);
+        }
+        const delay = Math.min(baseDelayMs * 2 ** attempt, 30_000);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+
+  /**
+   * Shared helper for promise-based methods that wait for a specific
+   * Hydra message. Handles connection, timeout, and settlement in one place.
+   */
+  private awaitMessage<T>(
+    handler: (message: HydraWsMessage, resolve: (value: T) => void) => void,
+    timeoutMs: number,
+    timeoutMessage: string,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+
+      const settle = <V>(fn: (v: V) => void, value: V) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        fn(value);
+      };
+
+      this.provider.onMessage((message) => {
+        handler(message, (value) => settle(resolve, value));
+      });
+
+      const timer = setTimeout(() => settle(reject, new Error(timeoutMessage)), timeoutMs);
+
+      this.connectWithRetry().catch((err) => settle(reject, new Error(`Failed to connect: ${String(err)}`)));
+    });
+  }
+
+  /** Connect the underlying HydraProvider WebSocket with retry logic. */
   public async connect() {
-    return await this.provider.connect();
+    return await this.connectWithRetry();
+  }
+
+  /** Disconnect the underlying HydraProvider WebSocket. */
+  public async disconnect(timeout?: number): Promise<void> {
+    return this.provider.disconnect(timeout);
+  }
+
+  /** Return the current HydraProvider connection/head status. */
+  public getStatus(): hydraStatus {
+    return this.provider.getStatus();
+  }
+
+  /** Register a callback for HydraProvider status changes. */
+  public onStatusChange(callback: (status: hydraStatus) => void): hydraStatus {
+    return this.provider.onStatusChange(callback);
   }
 
   /** Begin the head-opening sequence: init, commit, and listen for state changes. */
   public async startHead(txHash: string, txIndex: number) {
     this.mode = 'start';
     this.provider.onMessage((msg) => this.handleIncoming(msg, { txHash, txIndex }));
-    await this.provider.connect();
+    await this.connectWithRetry();
   }
 
   /** Begin the head-closing sequence: close, fanout, and finalize. */
   public async shutdownHead() {
     this.mode = 'shutdown';
     this.provider.onMessage((msg) => this.handleIncoming(msg));
-    await this.provider.connect();
+    await this.connectWithRetry();
   }
 
   /**
    * Wait for the Hydra head to fully close and finalize.
    * @param timeoutMs - Maximum time to wait in milliseconds.
    */
-  public async waitForHeadClose(timeoutMs: 180000): Promise<void> {
+  public async waitForHeadClose(timeoutMs = 180000): Promise<void> {
     this.mode = 'shutdown';
-    return new Promise(async (resolve, reject) => {
-      let settled = false;
-
-      const handle = async (message: any) => {
-        try {
-          console.log('Message received: ', message.tag, message);
-          switch (message.tag) {
-            case 'HeadIsClosed':
-            case 'HeadIsFinalized':
-              if (settled) return;
-              settled = true;
-              resolve();
-              break;
-            case 'ReadyToFanout':
-              if (settled) return;
-              await this.provider.fanout();
-              break;
-            case 'Greetings':
-              await this.onGreetings(message.headStatus);
-              break;
-          }
-        } catch (err) {
-          if (!settled) {
-            settled = true;
-            reject(err);
-          }
+    return this.awaitMessage<void>(
+      (message, resolve) => {
+        switch (message.tag) {
+          case 'HeadIsClosed':
+          case 'HeadIsFinalized':
+            resolve();
+            break;
+          case 'ReadyToFanout':
+            this.provider.fanout();
+            break;
+          case 'Greetings':
+            this.onGreetings(message.headStatus);
+            break;
         }
-      };
-
-      this.provider.onMessage(handle);
-
-      try {
-        await this.provider.connect();
-      } catch (err) {
-        if (!settled) {
-          settled = true;
-          return reject(new Error(`Failed to connect to Hydra provider: ${String(err)}`));
-        }
-      }
-
-      const timer = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          reject(new Error('Timeout waiting for head to close!'));
-        }
-      }, timeoutMs);
-
-      const finalizer = () => clearTimeout(timer);
-
-      const origResolve = resolve;
-      const origReject = reject;
-
-      resolve = (v?: void | PromiseLike<void>) => {
-        finalizer();
-        origResolve(v);
-      };
-
-      reject = (e: any) => {
-        finalizer();
-        origReject(e);
-      };
-    });
+      },
+      timeoutMs,
+      'Timeout waiting for head to close!',
+    );
   }
 
   /**
@@ -148,64 +176,22 @@ export class Wrangler {
    * @param commitArgs - UTxO to commit into the head during initialization.
    * @param timeoutMs - Maximum time to wait in milliseconds.
    */
-  public async waitForHeadOpen(commitArgs: { txHash: string; txIndex: number }, timeoutMs = 180000): Promise<void> {
+  public async waitForHeadOpen(commitArgs: CommitArgs, timeoutMs = 180000): Promise<void> {
     this.mode = 'start';
-    return new Promise(async (resolve, reject) => {
-      let settled = false;
-
-      const handle = async (message: any) => {
-        try {
-          if (message.tag === 'HeadIsOpen') {
-            if (settled) return;
-            settled = true;
-            resolve();
-          } else if (message.tag === 'HeadIsInitializing') {
-            if (!commitArgs) return;
-            await this.doCommit(commitArgs);
-          } else if (message.tag === 'Greetings') {
-            await this.onGreetings(message.headStatus, commitArgs);
-          }
-        } catch (err) {
-          if (!settled) {
-            settled = true;
-            reject(err);
-          }
+    return this.awaitMessage<void>(
+      (message, resolve) => {
+        if (message.tag === 'HeadIsOpen') {
+          resolve();
+        } else if (message.tag === 'HeadIsInitializing') {
+          if (!commitArgs) return;
+          this.doCommit(commitArgs);
+        } else if (message.tag === 'Greetings') {
+          this.onGreetings(message.headStatus, commitArgs);
         }
-      };
-
-      this.provider.onMessage(handle);
-
-      try {
-        await this.provider.connect();
-      } catch (err) {
-        if (!settled) {
-          settled = true;
-          return reject(new Error(`Failed to connect to Hydra provider: ${String(err)}`));
-        }
-      }
-
-      const timer = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          reject(new Error('Timeout waiting for head to open'));
-        }
-      }, timeoutMs);
-
-      const finalizer = () => clearTimeout(timer);
-
-      const origResolve = resolve;
-      const origReject = reject;
-
-      resolve = (v?: void | PromiseLike<void>) => {
-        finalizer();
-        origResolve(v);
-      };
-
-      reject = (e: any) => {
-        finalizer();
-        origReject(e);
-      };
-    });
+      },
+      timeoutMs,
+      'Timeout waiting for head to open',
+    );
   }
 
   /**
@@ -213,51 +199,16 @@ export class Wrangler {
    * @param timeoutMs - Maximum time to wait for the status response.
    * @returns The head status string (e.g. `"Idle"`, `"Open"`, `"Closed"`).
    */
-  public async getHeadStatus(timeoutMs = 5000): Promise<string> {
-    return new Promise(async (resolve, reject) => {
-      let settled = false;
-
-      const handle = (message: any) => {
-        if (settled) return;
+  public async getHeadStatus(timeoutMs = 5000): Promise<HeadStatus> {
+    return this.awaitMessage<HeadStatus>(
+      (message, resolve) => {
         if (message.tag === 'Greetings') {
-          settled = true;
-          resolve(message.headStatus as string);
+          resolve(message.headStatus);
         }
-      };
-
-      this.provider.onMessage(handle);
-
-      try {
-        await this.provider.connect();
-      } catch (err) {
-        if (!settled) {
-          settled = true;
-          return reject(new Error(`Failed to connect to Hydra provider: ${String(err)}`));
-        }
-      }
-
-      const timer = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          reject(new Error('Timeout waiting for head to open'));
-        }
-      }, timeoutMs);
-
-      const finalizer = () => clearTimeout(timer);
-
-      const origResolve = resolve;
-      const origReject = reject;
-
-      resolve = (v: string | PromiseLike<string>) => {
-        finalizer();
-        origResolve(v);
-      };
-
-      reject = (e: any) => {
-        finalizer();
-        origReject(e);
-      };
-    });
+      },
+      timeoutMs,
+      'Timeout waiting for head status',
+    );
   }
 
   private async doCommit(commitArgs: CommitArgs) {
@@ -270,7 +221,7 @@ export class Wrangler {
     }
   }
 
-  private async handleIncoming(message: any, commitArgs?: CommitArgs) {
+  private async handleIncoming(message: HydraWsMessage, commitArgs?: CommitArgs) {
     if (message.tag === 'Greetings') {
       await this.onGreetings(message.headStatus, commitArgs);
     } else {
@@ -296,7 +247,7 @@ export class Wrangler {
     }
   }
 
-  private async onGreetings(status: string, commitArgs?: CommitArgs) {
+  private async onGreetings(status: HeadStatus, commitArgs?: CommitArgs) {
     switch (this.mode) {
       case 'start':
         switch (status) {

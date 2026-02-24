@@ -20,6 +20,11 @@
           "signature": "(str: string, size: number) => string[]"
         },
         {
+          "name": "CommitArgs",
+          "kind": "interface",
+          "signature": "any"
+        },
+        {
           "name": "createMultisigAddress",
           "kind": "function",
           "signature": "(address1: string, address2: string, networkId?: number, scriptType?: \"any\" | \"all\") => { address: string; scriptCbor?: string; scriptHash?: string; }"
@@ -40,6 +45,21 @@
           "signature": "() => Promise<ParsedUtxo[]>"
         },
         {
+          "name": "HeadStatus",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "HydraMessage",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "HydraWsMessage",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
           "name": "ParsedUtxo",
           "kind": "interface",
           "signature": "any"
@@ -48,6 +68,11 @@
           "name": "queryUtxoByAddress",
           "kind": "function",
           "signature": "(address: string) => Promise<ParsedUtxo[]>"
+        },
+        {
+          "name": "ServerOutput",
+          "kind": "type",
+          "signature": "any"
         },
         {
           "name": "submitTx",
@@ -70,9 +95,24 @@
               "signature": "() => Promise<void>"
             },
             {
+              "name": "disconnect",
+              "kind": "method",
+              "signature": "(timeout?: number) => Promise<void>"
+            },
+            {
               "name": "getHeadStatus",
               "kind": "method",
-              "signature": "(timeoutMs?: number) => Promise<string>"
+              "signature": "(timeoutMs?: number) => Promise<HeadStatus>"
+            },
+            {
+              "name": "getStatus",
+              "kind": "method",
+              "signature": "() => hydraStatus"
+            },
+            {
+              "name": "onStatusChange",
+              "kind": "method",
+              "signature": "(callback: (status: hydraStatus) => void) => hydraStatus"
             },
             {
               "name": "provider",
@@ -92,12 +132,12 @@
             {
               "name": "waitForHeadClose",
               "kind": "method",
-              "signature": "(timeoutMs: 180000) => Promise<void>"
+              "signature": "(timeoutMs?: number) => Promise<void>"
             },
             {
               "name": "waitForHeadOpen",
               "kind": "method",
-              "signature": "(commitArgs: { txHash: string; txIndex: number; }, timeoutMs?: number) => Promise<void>"
+              "signature": "(commitArgs: CommitArgs, timeoutMs?: number) => Promise<void>"
             }
           ]
         }
