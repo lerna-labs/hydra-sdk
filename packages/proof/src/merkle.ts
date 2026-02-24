@@ -32,11 +32,12 @@ export type ProofPackage = {
   leafMode: LeafMode;
 };
 
-export const hexToBytes = (hex: string): Bytes =>
-  new Uint8Array(hex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
+export const hexToBytes = (hex: string): Bytes => new Uint8Array(hex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
 
 export const bytesToHex = (b: Bytes): string =>
-  Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+  Array.from(b)
+    .map((x) => x.toString(16).padStart(2, '0'))
+    .join('');
 
 export function blake2b256(data: Bytes | string): Bytes {
   const d = typeof data === 'string' ? new TextEncoder().encode(data) : data;
@@ -62,7 +63,7 @@ export function leafHashFrom(file: FileLeaf, mode: LeafMode = 'content+path'): U
 }
 
 function parentHash(a: Bytes, b: Bytes): Bytes {
-  const [L, R] = (bytesToHex(a) < bytesToHex(b)) ? [a, b] : [b, a];
+  const [L, R] = bytesToHex(a) < bytesToHex(b) ? [a, b] : [b, a];
   const prefix = new Uint8Array([0x01]);
   const payload = new Uint8Array(prefix.length + L.length + R.length);
   payload.set(prefix, 0);
@@ -132,7 +133,7 @@ export function verifyInclusion(
   file: { name: string; contentHashHex: string },
   proof: { siblingHex: string }[],
   expectedRootHex: string,
-  mode: LeafMode = 'content+path'
+  mode: LeafMode = 'content+path',
 ): boolean {
   let node = leafHashFrom({ name: file.name, contentHashHex: file.contentHashHex }, mode);
   for (const step of proof) node = parentHash(node, hexToBytes(step.siblingHex));

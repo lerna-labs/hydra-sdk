@@ -1,6 +1,4 @@
-import {
-  MeshWallet,
-} from '@meshsdk/core';
+import { MeshWallet } from '@meshsdk/core';
 
 export async function getAdmin(): Promise<MeshWallet> {
   const keyCborHex = process.env.HYDRA_ADMIN_CARDANO_PK || null;

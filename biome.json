@@ -22,7 +22,8 @@
         "noParameterAssign": "off"
       },
       "suspicious": {
-        "noExplicitAny": "off"
+        "noExplicitAny": "off",
+        "noAsyncPromiseExecutor": "warn"
       }
     }
   },

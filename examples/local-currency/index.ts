@@ -1,18 +1,18 @@
 import './load';
 
-import express from 'express';
-import { authHeaderMiddleware } from './middleware';
 import {
-  Wrangler,
-  verifySignature,
-  queryUtxoByAddress,
   createMultisigAddress,
   getAdmin,
+  queryUtxoByAddress,
   submitTx,
+  verifySignature,
+  Wrangler,
 } from '@lerna-labs/hydra-sdk';
-import { MeshWallet } from '@meshsdk/core';
-import { Client } from './protocol';
+import type { MeshWallet } from '@meshsdk/core';
+import express from 'express';
 import { ArgValue } from 'tx3-sdk/trp';
+import { authHeaderMiddleware } from './middleware';
+import { Client } from './protocol';
 
 const app = express();
 app.use(express.json());
@@ -27,7 +27,7 @@ type initializePayload = {
   address?: string;
   scriptCbor?: string;
   client?: Client;
-}
+};
 
 // Recursive function to sanitize BigInts... need to swap them to strings when passing JSON
 function sanitizeBigInts(obj: any): any {
@@ -63,10 +63,7 @@ async function initialize(user_address?: string): Promise<initializePayload> {
   if (user_address === undefined) {
     return { admin_wallet, client };
   } else {
-    const {
-      address,
-      scriptCbor,
-    } = createMultisigAddress(admin_address, user_address, HYDRA_NETWORK);
+    const { address, scriptCbor } = createMultisigAddress(admin_address, user_address, HYDRA_NETWORK);
     return { admin_wallet, address, scriptCbor, client };
   }
 }
@@ -146,7 +143,7 @@ app.get('/utxos/:address', async (req, res) => {
         utxos,
       },
     });
-  } catch (error: any) {
+  } catch (_error: any) {
     res.json({
       status: 'ERROR',
       message: 'Failed to query UTxO',
@@ -214,15 +211,14 @@ app.post('/send', async (req, res) => {
   const signature_key = req.body.key;
 
   try {
-    const {
-      isValid,
-      sigMeta,
-      pubKeyHex,
-    } = req.headers['x-bypass-validation'] != BYPASS_TOKEN ? verifySignature(signature, reason, sender_address, signature_key) : {
-      isValid: true,
-      sigMeta: ['', ''],
-      pubKeyHex: '',
-    };
+    const { isValid, sigMeta, pubKeyHex } =
+      req.headers['x-bypass-validation'] !== BYPASS_TOKEN
+        ? verifySignature(signature, reason, sender_address, signature_key)
+        : {
+            isValid: true,
+            sigMeta: ['', ''],
+            pubKeyHex: '',
+          };
 
     if (!isValid) {
       res.json({
@@ -458,7 +454,7 @@ app.post('/burn', async (req, res) => {
     return;
   }
 
-  const burner_address = admin_wallet.addresses.enterpriseAddressBech32 == user_address ? user_address : address;
+  const burner_address = admin_wallet.addresses.enterpriseAddressBech32 === user_address ? user_address : address;
 
   const burn_args = {
     burner: ArgValue.from(burner_address as string),
@@ -495,7 +491,6 @@ app.post('/burn', async (req, res) => {
     });
     return;
   }
-
 });
 
 app.post('/adminburn', async (req, res) => {
@@ -554,7 +549,6 @@ app.post('/adminburn', async (req, res) => {
     });
     return;
   }
-
 });
 
 app.listen(port, () => {

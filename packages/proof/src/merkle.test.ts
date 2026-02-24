@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { FileLeaf } from './merkle.js';
 import {
   blake2b256,
   buildProof,
@@ -9,7 +10,6 @@ import {
   leafHashFrom,
   verifyInclusion,
 } from './merkle.js';
-import type { FileLeaf } from './merkle.js';
 
 // ── Hex conversion round-trip ───────────────────────────────────────
 

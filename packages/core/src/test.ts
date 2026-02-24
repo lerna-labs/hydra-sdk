@@ -2,15 +2,10 @@ import * as dotenv from 'dotenv';
 
 dotenv.config({ path: '.local.env' });
 
-import { createMultisigAddress } from './mesh/native-script';
-import { queryUtxoByAddress } from './hydra/utxo';
-import { getAdmin } from './mesh/get-admin';
-import { HydraInstance, HydraProvider } from '@meshsdk/hydra';
 import { BlockfrostProvider, MeshTxBuilder, MeshWallet } from '@meshsdk/core';
 import { Wrangler } from './mesh/wrangler';
 
 (async () => {
-
   const admin_wallet = new MeshWallet({
     networkId: parseInt(process.env.HYDRA_NETWORK_ID || '0', 10) as 1 | 0,
     key: {
@@ -26,9 +21,8 @@ import { Wrangler } from './mesh/wrangler';
 
   const blockfrostProvider = new BlockfrostProvider(process.env.BLOCKFROST_API_KEY as string);
 
-
-  const txHash = 'a000003f633d9b2efcc18dedefaf60623e3132c8b05a5751ac08d3bf6f505d54';
-  const txIndex = 3;
+  const _txHash = 'a000003f633d9b2efcc18dedefaf60623e3132c8b05a5751ac08d3bf6f505d54';
+  const _txIndex = 3;
 
   const utxo = await blockfrostProvider.fetchAddressUTxOs(admin_address);
 
@@ -80,5 +74,3 @@ import { Wrangler } from './mesh/wrangler';
   // await wrangler.startHead(txHash, txIndex);
   await wrangler.shutdownHead();
 })();
-
-

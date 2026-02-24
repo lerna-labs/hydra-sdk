@@ -27,7 +27,7 @@ export async function getUtxoSet(): Promise<ParsedUtxo[]> {
   const baseUrl = process.env.HYDRA_API_URL;
 
   if (!baseUrl) {
-    throw new Error("HYDRA_API_URL is not defined in the environment variables!");
+    throw new Error('HYDRA_API_URL is not defined in the environment variables!');
   }
 
   const url = `${baseUrl}/snapshot/utxo`;
@@ -38,7 +38,7 @@ export async function getUtxoSet(): Promise<ParsedUtxo[]> {
 
     const UtxoSet: ParsedUtxo[] = [];
     for (const [txKey, utxo] of Object.entries(data)) {
-      const [tx_hash, index_str] = txKey.split("#");
+      const [tx_hash, index_str] = txKey.split('#');
       const output_index = parseInt(index_str, 10);
       const amount = Object.entries(utxo.value).map(([unit, quantity]) => ({
         unit,
@@ -55,7 +55,7 @@ export async function getUtxoSet(): Promise<ParsedUtxo[]> {
 
     return UtxoSet;
   } catch (error) {
-    console.error("Error fetching the Hydra Ledger?", error);
+    console.error('Error fetching the Hydra Ledger?', error);
     throw error;
   }
 }
@@ -64,8 +64,7 @@ export async function getUtxoSet(): Promise<ParsedUtxo[]> {
  * Fetches the full UTxO snapshot and filters by address.
  */
 export async function queryUtxoByAddress(address: string): Promise<ParsedUtxo[]> {
-    console.log(`Querying UTxO by Address: ${address}`);
-
+  console.log(`Querying UTxO by Address: ${address}`);
 
   try {
     const result: ParsedUtxo[] = [];

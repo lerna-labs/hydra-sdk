@@ -1,9 +1,4 @@
-import {
-  type NativeScript,
-  serializeNativeScript,
-  resolveScriptHash,
-  deserializeAddress,
-} from '@meshsdk/core';
+import { deserializeAddress, type NativeScript, resolveScriptHash, serializeNativeScript } from '@meshsdk/core';
 
 /**
  * Create a multisig address using 'any' policy (AND logic)
@@ -18,11 +13,10 @@ export function createMultisigAddress(
   networkId: number = 0,
   scriptType: 'any' | 'all' = 'any',
 ): {
-  address: string,
-  scriptCbor?: string,
-  scriptHash?: string,
+  address: string;
+  scriptCbor?: string;
+  scriptHash?: string;
 } {
-
   const keyHash1 = deserializeAddress(address1).pubKeyHash;
   const keyHash2 = deserializeAddress(address2).pubKeyHash;
 
@@ -41,10 +35,7 @@ export function createMultisigAddress(
   };
 
   const { address, scriptCbor } = serializeNativeScript(script, undefined, networkId);
-  let scriptHash;
-  if (scriptCbor != null) {
-    scriptHash = resolveScriptHash(scriptCbor);
-  }
+  const scriptHash = scriptCbor != null ? resolveScriptHash(scriptCbor) : undefined;
 
   return { address, scriptCbor, scriptHash };
 }
@@ -59,9 +50,9 @@ export function createNativeScript(
   invalidBefore: number | null = null,
   invalidHereafter: number | null = null,
 ): {
-  address: string,
-  scriptCbor?: string,
-  scriptHash?: string,
+  address: string;
+  scriptCbor?: string;
+  scriptHash?: string;
 } {
   const keyHash = deserializeAddress(address1).pubKeyHash;
 
@@ -90,11 +81,7 @@ export function createNativeScript(
   }
 
   const { address, scriptCbor } = serializeNativeScript(script, undefined, networkId);
-  let scriptHash;
-  if (scriptCbor != null) {
-    scriptHash = resolveScriptHash(scriptCbor);
-  }
+  const scriptHash = scriptCbor != null ? resolveScriptHash(scriptCbor) : undefined;
 
   return { address, scriptCbor, scriptHash };
 }
-
