@@ -60,6 +60,11 @@
           "signature": "any"
         },
         {
+          "name": "optionalEnv",
+          "kind": "function",
+          "signature": "(name: string, fallback: string) => string"
+        },
+        {
           "name": "ParsedUtxo",
           "kind": "interface",
           "signature": "any"
@@ -68,6 +73,11 @@
           "name": "queryUtxoByAddress",
           "kind": "function",
           "signature": "(address: string) => Promise<ParsedUtxo[]>"
+        },
+        {
+          "name": "requireEnv",
+          "kind": "function",
+          "signature": "(name: string) => string"
         },
         {
           "name": "ServerOutput",

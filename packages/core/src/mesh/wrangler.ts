@@ -1,10 +1,8 @@
 import { BlockfrostProvider } from '@meshsdk/core';
 import type { hydraStatus } from '@meshsdk/hydra';
 import { HydraInstance, HydraProvider } from '@meshsdk/hydra';
+import { requireEnv } from '../config.js';
 import type { HeadStatus, HydraWsMessage } from '../hydra/messages.js';
-
-const BLOCKFROST_KEY = process.env.BLOCKFROST_API_KEY as string;
-if (!BLOCKFROST_KEY) throw new Error('BLOCKFROST_API_KEY not set');
 
 /** UTxO reference used to commit funds into a Hydra head. */
 export interface CommitArgs {
@@ -27,7 +25,6 @@ export interface CommitArgs {
  * ```
  */
 export class Wrangler {
-  private readonly BLOCKFROST_KEY: string;
   private mode: 'start' | 'shutdown' | undefined;
   public readonly provider: HydraProvider;
   private instance: HydraInstance;
@@ -36,10 +33,9 @@ export class Wrangler {
   private readonly wsUrl: string;
 
   constructor(url?: string, wsUrl?: string) {
-    this.url = url || (process.env.HYDRA_API_URL as string);
-    this.wsUrl = wsUrl || (process.env.HYDRA_WS_URL as string);
-    this.BLOCKFROST_KEY = process.env.BLOCKFROST_API_KEY as string;
-    this.blockfrost = new BlockfrostProvider(this.BLOCKFROST_KEY);
+    this.url = url || requireEnv('HYDRA_API_URL');
+    this.wsUrl = wsUrl || requireEnv('HYDRA_WS_URL');
+    this.blockfrost = new BlockfrostProvider(requireEnv('BLOCKFROST_API_KEY'));
     this.provider = this.createHydraProvider();
     this.instance = this.createHydraInstance();
   }

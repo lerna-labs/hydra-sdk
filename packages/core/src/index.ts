@@ -1,3 +1,4 @@
+export { optionalEnv, requireEnv } from './config.js';
 export type { HeadStatus, HydraMessage, HydraWsMessage, ServerOutput } from './hydra/messages.js';
 export type { ParsedUtxo } from './hydra/utxo.js';
 export { getUtxoSet, queryUtxoByAddress } from './hydra/utxo.js';

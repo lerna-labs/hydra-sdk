@@ -46,7 +46,7 @@ describe('getUtxoSet', () => {
 
   it('throws when HYDRA_API_URL is not set', async () => {
     delete process.env.HYDRA_API_URL;
-    await expect(getUtxoSet()).rejects.toThrow('HYDRA_API_URL is not defined');
+    await expect(getUtxoSet()).rejects.toThrow('Missing required environment variable: HYDRA_API_URL');
   });
 
   it('calls the correct snapshot endpoint', async () => {

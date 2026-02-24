@@ -40,8 +40,9 @@ vi.mock('@meshsdk/core', () => ({
   },
 }));
 
-// Stub the env var before the module is loaded
+// Stub env vars before the module is loaded
 vi.stubEnv('BLOCKFROST_API_KEY', 'test-key');
+vi.stubEnv('HYDRA_WS_URL', 'ws://localhost:4001');
 
 // Dynamic import so mocks are in place first
 const { Wrangler } = await import('./wrangler.js');

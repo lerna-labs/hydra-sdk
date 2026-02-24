@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { requireEnv } from '../config.js';
 
 interface SnapshotUtxoValue {
   [unit: string]: string;
@@ -32,11 +33,7 @@ export interface ParsedUtxo {
  * @returns All UTxOs currently held in the Hydra head.
  */
 export async function getUtxoSet(): Promise<ParsedUtxo[]> {
-  const baseUrl = process.env.HYDRA_API_URL;
-
-  if (!baseUrl) {
-    throw new Error('HYDRA_API_URL is not defined in the environment variables!');
-  }
+  const baseUrl = requireEnv('HYDRA_API_URL');
 
   const url = `${baseUrl}/snapshot/utxo`;
 
