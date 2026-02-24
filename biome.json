@@ -21,6 +21,9 @@
         "noNonNullAssertion": "off",
         "noParameterAssign": "off"
       },
+      "correctness": {
+        "noUnusedPrivateClassMembers": "warn"
+      },
       "suspicious": {
         "noExplicitAny": "off",
         "noAsyncPromiseExecutor": "warn"
@@ -33,6 +36,8 @@
       "packages/**/*.json",
       "examples/**/*.ts",
       "examples/**/*.json",
+      "!!**/.tx3/**",
+      "!!**/protocol.ts",
       "vitest.workspace.ts",
       "biome.json"
     ],
