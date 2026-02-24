@@ -1,0 +1,106 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Mock axios before importing the module under test
+vi.mock('axios', () => ({
+  default: {
+    get: vi.fn(),
+  },
+}));
+
+import axios from 'axios';
+import { getUtxoSet, queryUtxoByAddress } from './utxo.js';
+
+const mockAxiosGet = vi.mocked(axios.get);
+
+const SAMPLE_SNAPSHOT: Record<string, any> = {
+  'abc123#0': {
+    address: 'addr_test1qz_alice',
+    datum: null,
+    datumHash: null,
+    inlineDatum: null,
+    referenceScript: null,
+    value: { lovelace: '5000000' },
+  },
+  'def456#2': {
+    address: 'addr_test1qz_bob',
+    datum: null,
+    datumHash: null,
+    inlineDatum: null,
+    referenceScript: null,
+    value: { lovelace: '10000000', 'policyId.tokenName': '100' },
+  },
+};
+
+describe('getUtxoSet', () => {
+  const originalEnv = process.env.HYDRA_API_URL;
+
+  beforeEach(() => {
+    process.env.HYDRA_API_URL = 'http://localhost:4001';
+    mockAxiosGet.mockResolvedValue({ data: SAMPLE_SNAPSHOT });
+  });
+
+  afterEach(() => {
+    process.env.HYDRA_API_URL = originalEnv;
+    vi.restoreAllMocks();
+  });
+
+  it('throws when HYDRA_API_URL is not set', async () => {
+    delete process.env.HYDRA_API_URL;
+    await expect(getUtxoSet()).rejects.toThrow('HYDRA_API_URL is not defined');
+  });
+
+  it('calls the correct snapshot endpoint', async () => {
+    await getUtxoSet();
+    expect(mockAxiosGet).toHaveBeenCalledWith('http://localhost:4001/snapshot/utxo');
+  });
+
+  it('splits txHash#index keys correctly', async () => {
+    const result = await getUtxoSet();
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tx_hash: 'abc123', output_index: 0 }),
+        expect.objectContaining({ tx_hash: 'def456', output_index: 2 }),
+      ]),
+    );
+  });
+
+  it('maps value object to amount array', async () => {
+    const result = await getUtxoSet();
+    const bob = result.find((u) => u.tx_hash === 'def456');
+    expect(bob?.amount).toEqual([
+      { unit: 'lovelace', quantity: '10000000' },
+      { unit: 'policyId.tokenName', quantity: '100' },
+    ]);
+  });
+
+  it('preserves the address field', async () => {
+    const result = await getUtxoSet();
+    const alice = result.find((u) => u.tx_hash === 'abc123');
+    expect(alice?.address).toBe('addr_test1qz_alice');
+  });
+});
+
+describe('queryUtxoByAddress', () => {
+  const originalEnv = process.env.HYDRA_API_URL;
+
+  beforeEach(() => {
+    process.env.HYDRA_API_URL = 'http://localhost:4001';
+    mockAxiosGet.mockResolvedValue({ data: SAMPLE_SNAPSHOT });
+  });
+
+  afterEach(() => {
+    process.env.HYDRA_API_URL = originalEnv;
+    vi.restoreAllMocks();
+  });
+
+  it('filters UTxOs by address', async () => {
+    const result = await queryUtxoByAddress('addr_test1qz_alice');
+    expect(result).toHaveLength(1);
+    expect(result[0].tx_hash).toBe('abc123');
+  });
+
+  it('returns empty array when no UTxOs match', async () => {
+    const result = await queryUtxoByAddress('addr_test1qz_nobody');
+    expect(result).toEqual([]);
+  });
+});
