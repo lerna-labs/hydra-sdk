@@ -42,6 +42,7 @@ CARDANO_TARGETS := cardano-start cardano-stop cardano-logs
 UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert
 UTILITY_TARGETS += check-tls-cert _guard-network _guard-instance _abort-if-exists _check-key-exists _prepare-directories
 UTILITY_TARGETS += gen-instance-env reset-instance-counter create-instance extract-cardano-privkey append-admin-pk _assert-middleware
+UTILITY_TARGETS += test lint typecheck fmt check-releases
 
 .PHONY: $(HYDRA_TARGETS) $(CARDANO_TARGETS) $(UTILITY_TARGETS)
 
@@ -260,6 +261,21 @@ check-tls-cert: _guard-network
 	  echo "ℹ️  USE_TLS is not enabled; skipping TLS cert presence check."; \
 	fi
 
+test:
+	npm test
+
+lint:
+	npm run lint
+
+typecheck:
+	npm run typecheck
+
+fmt:
+	npm run lint:fix
+
+check-releases:
+	./scripts/check-releases.sh
+
 help:
 	@echo "Targets:"
 	@echo "  cardano-{start,stop,logs}"
@@ -267,3 +283,5 @@ help:
 	@echo "  gen-hydra-keys / gen-cardano-keys"
 	@echo "  check-hydra-keys / check-cardano-keys"
 	@echo "  gen-trp-config / gen-tls-cert / check-tls-cert"
+	@echo "  test / lint / typecheck / fmt"
+	@echo "  check-releases"

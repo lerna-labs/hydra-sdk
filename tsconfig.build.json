@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/proof"
+    },
+    {
+      "path": "examples/local-currency"
+    }
+  ]
+}
