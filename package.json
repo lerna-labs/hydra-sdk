@@ -42,21 +42,21 @@
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.20.3",
-    "typescript": "^5.8.3",
+    "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
   "dependencies": {
     "@emurgo/cardano-message-signing-nodejs": "^1.1.0",
-    "@emurgo/cardano-serialization-lib-nodejs": "^15.0.1",
-    "@meshsdk/core": "1.9.0-beta.83",
-    "@meshsdk/core-csl": "1.9.0-beta.83",
-    "@meshsdk/hydra": "1.9.0-beta.83",
+    "@emurgo/cardano-serialization-lib-nodejs": "^15.0.3",
+    "@meshsdk/core": "1.9.0-beta.99",
+    "@meshsdk/core-csl": "1.9.0-beta.99",
+    "@meshsdk/hydra": "1.9.0-beta.99",
     "@noble/hashes": "^2.0.1",
     "axios": "^1.11.0",
     "commander": "^14.0.1",
     "dotenv": "^17.2.1",
-    "express": "^5.1.0",
-    "tx3-sdk": "^0.5.0",
+    "express": "^5.2.1",
+    "tx3-sdk": "^0.7.0",
     "utf-8-validate": "^5.0.2",
     "ws": "^8.18.3"
   }
