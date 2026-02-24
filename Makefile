@@ -84,7 +84,7 @@ CARDANO_TARGETS := cardano-start cardano-stop cardano-logs
 UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert
 UTILITY_TARGETS += check-tls-cert _guard-network _guard-instance _abort-if-exists _check-key-exists _prepare-directories
 UTILITY_TARGETS += gen-instance-env reset-instance-counter create-instance extract-cardano-privkey append-admin-pk _assert-middleware
-UTILITY_TARGETS += test lint typecheck fmt check-releases validate-docker
+UTILITY_TARGETS += test lint typecheck fmt check-releases validate-docker api-snapshot docs
 
 .PHONY: $(HYDRA_TARGETS) $(CARDANO_TARGETS) $(UTILITY_TARGETS)
 
@@ -326,6 +326,12 @@ check-releases:
 validate-docker:
 	npx tsx scripts/validate-docker.ts
 
+api-snapshot:
+	npm run api:extract
+
+docs:
+	npm run docs:api
+
 help:
 	@echo ""
 	@echo "Usage: make NETWORK=<network> [INSTANCE=<id>] <target>"
@@ -370,6 +376,8 @@ help:
 	@echo "  fmt                      Auto-fix lint issues"
 	@echo "  check-releases           Check upstream dependency releases"
 	@echo "  validate-docker          Validate Docker infrastructure config"
+	@echo "  api-snapshot             Extract API surface snapshot to api/snapshot.json"
+	@echo "  docs                     Generate API reference docs to docs/api/"
 	@echo ""
 	@echo "── Port Allocation (base ports per network) ────────────────"
 	@echo "  Network   Cardano  Express  API   Listen  TRP"

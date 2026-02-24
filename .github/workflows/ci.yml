@@ -31,3 +31,11 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Check API surface
+        run: |
+          npm run build
+          npx tsx scripts/extract-api.ts
+          git diff --exit-code api/snapshot.json || {
+            echo "::warning::API surface has changed — review api/snapshot.json diff in this PR"
+          }

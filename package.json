@@ -15,7 +15,10 @@
     "start:api": "tsx watch examples/local-currency/index.ts",
     "build": "npm run build -ws",
     "build:sdk": "npm run build -w @lerna-labs/hydra-sdk",
-    "build:proof": "npm run build -w @lerna-labs/hydra-proof"
+    "build:proof": "npm run build -w @lerna-labs/hydra-proof",
+    "api:extract": "npm run build && tsx scripts/extract-api.ts",
+    "api:compare": "tsx scripts/compare-api.ts",
+    "docs:api": "typedoc"
   },
   "repository": {
     "type": "git",
@@ -42,6 +45,8 @@
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.20.3",
+    "typedoc": "^0.28.17",
+    "typedoc-plugin-markdown": "^4.10.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },

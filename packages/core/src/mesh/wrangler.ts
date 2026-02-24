@@ -4,11 +4,26 @@ import { HydraInstance, HydraProvider } from '@meshsdk/hydra';
 const BLOCKFROST_KEY = process.env.BLOCKFROST_API_KEY as string;
 if (!BLOCKFROST_KEY) throw new Error('BLOCKFROST_API_KEY not set');
 
+/** UTxO reference used to commit funds into a Hydra head. */
 export interface CommitArgs {
+  /** Transaction hash containing the UTxO to commit. */
   txHash: string;
+  /** Output index of the UTxO within the transaction. */
   txIndex: number;
 }
 
+/**
+ * High-level controller for Hydra head lifecycle operations.
+ *
+ * Wraps `HydraProvider` and `HydraInstance` to provide a simplified API
+ * for initializing, opening, and closing a Hydra head.
+ *
+ * @example
+ * ```ts
+ * const wrangler = new Wrangler("http://localhost:4001");
+ * await wrangler.waitForHeadOpen({ txHash: "abc...", txIndex: 0 });
+ * ```
+ */
 export class Wrangler {
   private readonly BLOCKFROST_KEY: string;
   private mode: 'start' | 'shutdown' | undefined;
@@ -39,22 +54,29 @@ export class Wrangler {
     });
   }
 
+  /** Connect the underlying HydraProvider WebSocket. */
   public async connect() {
     return await this.provider.connect();
   }
 
+  /** Begin the head-opening sequence: init, commit, and listen for state changes. */
   public async startHead(txHash: string, txIndex: number) {
     this.mode = 'start';
     this.provider.onMessage((msg) => this.handleIncoming(msg, { txHash, txIndex }));
     await this.provider.connect();
   }
 
+  /** Begin the head-closing sequence: close, fanout, and finalize. */
   public async shutdownHead() {
     this.mode = 'shutdown';
     this.provider.onMessage((msg) => this.handleIncoming(msg));
     await this.provider.connect();
   }
 
+  /**
+   * Wait for the Hydra head to fully close and finalize.
+   * @param timeoutMs - Maximum time to wait in milliseconds.
+   */
   public async waitForHeadClose(timeoutMs: 180000): Promise<void> {
     this.mode = 'shutdown';
     return new Promise(async (resolve, reject) => {
@@ -121,6 +143,11 @@ export class Wrangler {
     });
   }
 
+  /**
+   * Wait for the Hydra head to reach the `Open` state.
+   * @param commitArgs - UTxO to commit into the head during initialization.
+   * @param timeoutMs - Maximum time to wait in milliseconds.
+   */
   public async waitForHeadOpen(commitArgs: { txHash: string; txIndex: number }, timeoutMs = 180000): Promise<void> {
     this.mode = 'start';
     return new Promise(async (resolve, reject) => {
@@ -181,6 +208,11 @@ export class Wrangler {
     });
   }
 
+  /**
+   * Query the current Hydra head status via a `Greetings` message.
+   * @param timeoutMs - Maximum time to wait for the status response.
+   * @returns The head status string (e.g. `"Idle"`, `"Open"`, `"Closed"`).
+   */
   public async getHeadStatus(timeoutMs = 5000): Promise<string> {
     return new Promise(async (resolve, reject) => {
       let settled = false;

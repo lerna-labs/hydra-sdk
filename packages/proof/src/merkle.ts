@@ -1,9 +1,13 @@
 import { blake2b } from '@noble/hashes/blake2.js';
 
+/** Raw byte array. */
 export type Bytes = Uint8Array;
+/** Lowercase hex-encoded hash string. */
 export type HashHex = string;
+/** Controls whether leaf hashes include the file path. */
 export type LeafMode = 'content' | 'content+path';
 
+/** Metadata for a file to be included in the Merkle tree. */
 export type FileLeaf = {
   name: string;
   mime?: string;
@@ -11,8 +15,10 @@ export type FileLeaf = {
   contentHashHex: string;
 };
 
+/** A single sibling hash step in a Merkle inclusion proof. */
 export type ProofStep = { siblingHex: HashHex };
 
+/** Self-describing proof package containing the tree root and per-file proofs. */
 export type ProofPackage = {
   schema: 'lerna-labs/merkle-proof@v1';
   hashAlg: 'blake2b-256';
@@ -32,18 +38,27 @@ export type ProofPackage = {
   leafMode: LeafMode;
 };
 
+/** Convert a hex string to a byte array. */
 export const hexToBytes = (hex: string): Bytes => new Uint8Array(hex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
 
+/** Convert a byte array to a lowercase hex string. */
 export const bytesToHex = (b: Bytes): string =>
   Array.from(b)
     .map((x) => x.toString(16).padStart(2, '0'))
     .join('');
 
+/** Compute a blake2b-256 hash of the given data. */
 export function blake2b256(data: Bytes | string): Bytes {
   const d = typeof data === 'string' ? new TextEncoder().encode(data) : data;
   return blake2b(d, { dkLen: 32 });
 }
 
+/**
+ * Compute the leaf hash for a file using the `0x00` domain prefix.
+ *
+ * @param file - File metadata including the pre-computed content hash.
+ * @param mode - Whether to include the file path in the hash.
+ */
 export function leafHashFrom(file: FileLeaf, mode: LeafMode = 'content+path'): Uint8Array {
   const prefix = new Uint8Array([0x00]);
   const ch = hexToBytes(file.contentHashHex);
@@ -72,6 +87,12 @@ function parentHash(a: Bytes, b: Bytes): Bytes {
   return blake2b256(payload);
 }
 
+/**
+ * Build a complete Merkle tree from leaf hashes.
+ *
+ * @param leaves - Array of leaf-level hashes.
+ * @returns Array of levels, from leaves (index 0) to root (last index).
+ */
 export function buildTree(leaves: Bytes[]): Bytes[][] {
   if (leaves.length === 0) return [[new Uint8Array(0)]];
   let level = leaves.slice();
@@ -89,6 +110,13 @@ export function buildTree(leaves: Bytes[]): Bytes[][] {
   return levels;
 }
 
+/**
+ * Extract the Merkle inclusion proof for a leaf at the given index.
+ *
+ * @param index - Zero-based index of the leaf in the tree.
+ * @param levels - Tree levels as returned by {@link buildTree}.
+ * @returns Ordered sibling hashes needed to recompute the root.
+ */
 export function buildProof(index: number, levels: Bytes[][]): ProofStep[] {
   const proof: ProofStep[] = [];
   let idx = index;
@@ -102,6 +130,15 @@ export function buildProof(index: number, levels: Bytes[][]): ProofStep[] {
   return proof;
 }
 
+/**
+ * Compute a full proof package for a set of files.
+ *
+ * Builds the Merkle tree and generates an inclusion proof for every file.
+ *
+ * @param files - Files to include in the tree.
+ * @param mode - Leaf hashing mode.
+ * @returns A self-describing {@link ProofPackage} with the root hash and per-file proofs.
+ */
 export function computePackage(files: FileLeaf[], mode: LeafMode = 'content+path'): ProofPackage {
   const leaves = files.map((f) => leafHashFrom(f, mode));
   const levels = buildTree(leaves);
@@ -128,7 +165,15 @@ export function computePackage(files: FileLeaf[], mode: LeafMode = 'content+path
   };
 }
 
-// Verify a single file is included under the given root using its proof:
+/**
+ * Verify that a file is included in a Merkle tree with the given root.
+ *
+ * @param file - The file's name and content hash.
+ * @param proof - Sibling hashes from the inclusion proof.
+ * @param expectedRootHex - Expected Merkle root hex string.
+ * @param mode - Leaf hashing mode (must match the mode used to build the tree).
+ * @returns `true` if the proof is valid.
+ */
 export function verifyInclusion(
   file: { name: string; contentHashHex: string },
   proof: { siblingHex: string }[],

@@ -1,11 +1,13 @@
 import { deserializeAddress, type NativeScript, resolveScriptHash, serializeNativeScript } from '@meshsdk/core';
 
 /**
- * Create a multisig address using 'any' policy (AND logic)
- * @param address1 The first address to include in the script (staking or payment)
- * @param address2 The second address to include in the script (staking or payment)
- * @param networkId 0 = testnet, 1 = mainnet
- * @param scriptType
+ * Create a multisig script address from two Cardano addresses.
+ *
+ * @param address1 - First address (bech32) to include in the native script.
+ * @param address2 - Second address (bech32) to include in the native script.
+ * @param networkId - `0` for testnet, `1` for mainnet.
+ * @param scriptType - `"any"` requires one signature, `"all"` requires both.
+ * @returns The script address, serialized CBOR, and script hash.
  */
 export function createMultisigAddress(
   address1: string,
@@ -41,7 +43,14 @@ export function createMultisigAddress(
 }
 
 /**
- * Create a Native Script policy for minting tokens
+ * Create a native script policy for minting tokens.
+ *
+ * @param address1 - Address (bech32) whose key hash is the required signer.
+ * @param networkId - `0` for testnet, `1` for mainnet.
+ * @param scriptType - `"any"` or `"all"` when combined with time-lock scripts.
+ * @param invalidBefore - Optional slot number before which the script is invalid.
+ * @param invalidHereafter - Optional slot number after which the script is invalid.
+ * @returns The script address, serialized CBOR, and script hash.
  */
 export function createNativeScript(
   address1: string,

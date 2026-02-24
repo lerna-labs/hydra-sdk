@@ -1,3 +1,4 @@
+export type { ParsedUtxo } from './hydra/utxo.js';
 export { getUtxoSet, queryUtxoByAddress } from './hydra/utxo.js';
 export { getAdmin } from './mesh/get-admin.js';
 export { createMultisigAddress, createNativeScript } from './mesh/native-script.js';

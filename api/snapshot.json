@@ -1,0 +1,182 @@
+{
+  "schema": "lerna-labs/api-snapshot@v1",
+  "packages": {
+    "@lerna-labs/hydra-sdk": {
+      "version": "1.0.0-beta.13",
+      "exports": [
+        {
+          "name": "bufferToAscii",
+          "kind": "function",
+          "signature": "(buffer: any) => string"
+        },
+        {
+          "name": "bufferToHex",
+          "kind": "function",
+          "signature": "(buffer: any) => string"
+        },
+        {
+          "name": "chunkString",
+          "kind": "function",
+          "signature": "(str: string, size: number) => string[]"
+        },
+        {
+          "name": "createMultisigAddress",
+          "kind": "function",
+          "signature": "(address1: string, address2: string, networkId?: number, scriptType?: \"any\" | \"all\") => { address: string; scriptCbor?: string; scriptHash?: string; }"
+        },
+        {
+          "name": "createNativeScript",
+          "kind": "function",
+          "signature": "(address1: string, networkId?: number, scriptType?: \"any\" | \"all\", invalidBefore?: number | null, invalidHereafter?: number | null) => { address: string; scriptCbor?: string; scriptHash?: string; }"
+        },
+        {
+          "name": "getAdmin",
+          "kind": "function",
+          "signature": "() => Promise<MeshWallet>"
+        },
+        {
+          "name": "getUtxoSet",
+          "kind": "function",
+          "signature": "() => Promise<ParsedUtxo[]>"
+        },
+        {
+          "name": "ParsedUtxo",
+          "kind": "interface",
+          "signature": "any"
+        },
+        {
+          "name": "queryUtxoByAddress",
+          "kind": "function",
+          "signature": "(address: string) => Promise<ParsedUtxo[]>"
+        },
+        {
+          "name": "submitTx",
+          "kind": "function",
+          "signature": "(submit_endpoint: string, payload: string, id: string) => Promise<Response>"
+        },
+        {
+          "name": "verifySignature",
+          "kind": "function",
+          "signature": "(signature: string, message: string, signingAddress: string, signatureKey: string) => { isValid: boolean; sigMeta: string[]; pubKeyHex: string; }"
+        },
+        {
+          "name": "Wrangler",
+          "kind": "class",
+          "signature": "typeof Wrangler",
+          "members": [
+            {
+              "name": "connect",
+              "kind": "method",
+              "signature": "() => Promise<void>"
+            },
+            {
+              "name": "getHeadStatus",
+              "kind": "method",
+              "signature": "(timeoutMs?: number) => Promise<string>"
+            },
+            {
+              "name": "provider",
+              "kind": "property",
+              "signature": "HydraProvider"
+            },
+            {
+              "name": "shutdownHead",
+              "kind": "method",
+              "signature": "() => Promise<void>"
+            },
+            {
+              "name": "startHead",
+              "kind": "method",
+              "signature": "(txHash: string, txIndex: number) => Promise<void>"
+            },
+            {
+              "name": "waitForHeadClose",
+              "kind": "method",
+              "signature": "(timeoutMs: 180000) => Promise<void>"
+            },
+            {
+              "name": "waitForHeadOpen",
+              "kind": "method",
+              "signature": "(commitArgs: { txHash: string; txIndex: number; }, timeoutMs?: number) => Promise<void>"
+            }
+          ]
+        }
+      ]
+    },
+    "@lerna-labs/hydra-proof": {
+      "version": "1.0.0-beta.0",
+      "exports": [
+        {
+          "name": "blake2b256",
+          "kind": "function",
+          "signature": "(data: Bytes | string) => Bytes"
+        },
+        {
+          "name": "buildProof",
+          "kind": "function",
+          "signature": "(index: number, levels: Bytes[][]) => ProofStep[]"
+        },
+        {
+          "name": "buildTree",
+          "kind": "function",
+          "signature": "(leaves: Bytes[]) => Bytes[][]"
+        },
+        {
+          "name": "Bytes",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "bytesToHex",
+          "kind": "function",
+          "signature": "(b: Bytes) => string"
+        },
+        {
+          "name": "computePackage",
+          "kind": "function",
+          "signature": "(files: FileLeaf[], mode?: LeafMode) => ProofPackage"
+        },
+        {
+          "name": "FileLeaf",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "HashHex",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "hexToBytes",
+          "kind": "function",
+          "signature": "(hex: string) => Bytes"
+        },
+        {
+          "name": "leafHashFrom",
+          "kind": "function",
+          "signature": "(file: FileLeaf, mode?: LeafMode) => Uint8Array"
+        },
+        {
+          "name": "LeafMode",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "ProofPackage",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "ProofStep",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "verifyInclusion",
+          "kind": "function",
+          "signature": "(file: { name: string; contentHashHex: string; }, proof: { siblingHex: string; }[], expectedRootHex: string, mode?: LeafMode) => boolean"
+        }
+      ]
+    }
+  }
+}

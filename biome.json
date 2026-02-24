@@ -38,6 +38,7 @@
       "examples/**/*.json",
       "!!**/.tx3/**",
       "!!**/protocol.ts",
+      "!!**/dist/**",
       "vitest.workspace.ts",
       "biome.json"
     ],

@@ -13,7 +13,8 @@ interface SnapshotUtxo {
   value: SnapshotUtxoValue;
 }
 
-interface ParsedUtxo {
+/** A UTxO entry parsed from the Hydra snapshot. */
+export interface ParsedUtxo {
   tx_hash: string;
   output_index: number;
   address: string;
@@ -23,6 +24,13 @@ interface ParsedUtxo {
   }[];
 }
 
+/**
+ * Fetch the full UTxO set from the Hydra head snapshot.
+ *
+ * Reads `HYDRA_API_URL` from the environment.
+ *
+ * @returns All UTxOs currently held in the Hydra head.
+ */
 export async function getUtxoSet(): Promise<ParsedUtxo[]> {
   const baseUrl = process.env.HYDRA_API_URL;
 
@@ -61,7 +69,10 @@ export async function getUtxoSet(): Promise<ParsedUtxo[]> {
 }
 
 /**
- * Fetches the full UTxO snapshot and filters by address.
+ * Fetch UTxOs belonging to a specific address from the Hydra head snapshot.
+ *
+ * @param address - Bech32 address to filter by.
+ * @returns UTxOs matching the given address.
  */
 export async function queryUtxoByAddress(address: string): Promise<ParsedUtxo[]> {
   console.log(`Querying UTxO by Address: ${address}`);

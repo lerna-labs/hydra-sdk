@@ -1,6 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { MeshWallet } from '@meshsdk/core';
 
+/**
+ * Create and initialize a MeshWallet for the Hydra head admin.
+ *
+ * Reads the Cardano signing key from `HYDRA_ADMIN_KEY_FILE` (preferred)
+ * or falls back to `HYDRA_ADMIN_CARDANO_PK`. Network is selected via `HYDRA_NETWORK`.
+ *
+ * @returns An initialized MeshWallet ready for signing transactions.
+ * @throws If no signing key is available or the wallet fails to initialize.
+ */
 export async function getAdmin(): Promise<MeshWallet> {
   let keyCborHex: string | null = null;
 

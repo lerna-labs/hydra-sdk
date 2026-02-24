@@ -1,7 +1,3 @@
-/**
- * Signature Validation Stuff
- */
-
 import { Buffer } from 'node:buffer';
 import { COSESign1 } from '@emurgo/cardano-message-signing-nodejs';
 import * as CSL from '@emurgo/cardano-serialization-lib-nodejs';
@@ -9,9 +5,20 @@ import { bech32 } from 'bech32';
 import { default as cbor } from 'cbor';
 import { chunkString } from './chunk-string.js';
 
+/** Convert a buffer-like value to a hex string. */
 export const bufferToHex = (buffer: any) => Buffer.from(buffer).toString('hex');
+/** Convert a buffer-like value to an ASCII string. */
 export const bufferToAscii = (buffer: any) => Buffer.from(buffer).toString('ascii');
 
+/**
+ * Verify a CIP-30 COSE_Sign1 signature against an expected message and address.
+ *
+ * @param signature - Hex-encoded COSE_Sign1 signature bytes.
+ * @param message - The original plaintext message that was signed.
+ * @param signingAddress - Bech32 address of the expected signer.
+ * @param signatureKey - Hex-encoded COSE key containing the public key.
+ * @returns Validation result with `isValid`, chunked signature metadata, and public key hex.
+ */
 export function verifySignature(signature: string, message: string, signingAddress: string, signatureKey: string) {
   try {
     const coseSign1 = COSESign1.from_bytes(Buffer.from(signature, 'hex'));
@@ -44,7 +51,3 @@ export function verifySignature(signature: string, message: string, signingAddre
     return { isValid: false, sigMeta: [], pubKeyHex: '' };
   }
 }
-
-/**
- * End Signature Validation Stuff
- */
