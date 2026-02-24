@@ -16,6 +16,7 @@ export class Wrangler {
   private instance: HydraInstance;
   private readonly blockfrost: BlockfrostProvider;
   private readonly url: string;
+  private readonly wsUrl: string;
 
   constructor(url?: string, wsUrl?: string) {
     this.url = url || (process.env.HYDRA_API_URL as string);
