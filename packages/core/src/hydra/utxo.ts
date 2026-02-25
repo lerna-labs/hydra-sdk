@@ -83,8 +83,8 @@ export async function queryUtxoByAddress(address: string): Promise<ParsedUtxo[]>
       }
     }
     return result;
-  } catch (error: any) {
-    console.error('Failed to fetch or parse UTxO snapshot:', error.message);
+  } catch (error: unknown) {
+    console.error('Failed to fetch or parse UTxO snapshot:', error instanceof Error ? error.message : String(error));
     throw error;
   }
 }

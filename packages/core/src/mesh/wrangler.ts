@@ -211,7 +211,7 @@ export class Wrangler {
     try {
       const rawTx = await this.instance.commitFunds(commitArgs.txHash, commitArgs.txIndex);
       return await this.blockfrost.submitTx(rawTx);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`Commit error`, err);
       return false;
     }

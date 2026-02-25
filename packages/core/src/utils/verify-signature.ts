@@ -6,9 +6,9 @@ import { default as cbor } from 'cbor';
 import { chunkString } from './chunk-string.js';
 
 /** Convert a buffer-like value to a hex string. */
-export const bufferToHex = (buffer: any) => Buffer.from(buffer).toString('hex');
+export const bufferToHex = (buffer: Uint8Array | string) => Buffer.from(buffer).toString('hex');
 /** Convert a buffer-like value to an ASCII string. */
-export const bufferToAscii = (buffer: any) => Buffer.from(buffer).toString('ascii');
+export const bufferToAscii = (buffer: Uint8Array | string) => Buffer.from(buffer).toString('ascii');
 
 /**
  * Verify a CIP-30 COSE_Sign1 signature against an expected message and address.
@@ -46,8 +46,8 @@ export function verifySignature(signature: string, message: string, signingAddre
       console.log(isValid, validates, message_matches, address_matches);
     }
     return { isValid, sigMeta, pubKeyHex: sigKey.to_hex() };
-  } catch (error: any) {
-    console.error(`Error during signature validation:`, error);
+  } catch (error: unknown) {
+    console.error(`Error during signature validation:`, String(error));
     return { isValid: false, sigMeta: [], pubKeyHex: '' };
   }
 }
