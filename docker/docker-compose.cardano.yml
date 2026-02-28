@@ -14,6 +14,23 @@ services:
       - "${CARDANO_PORT}:3001"
     networks:
       hydra-network:
+
+  cardano-dolos:
+    container_name: cardano-dolos-${NETWORK}
+    image: ${DOLOS_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      - cardano-node
+    command: ["daemon"]
+    ports:
+      - "${DOLOS_TRP_PORT}:${DOLOS_TRP_PORT}"
+      - "${DOLOS_GRPC_PORT}:${DOLOS_GRPC_PORT}"
+    volumes:
+      - "${DATA_DIR}/dolos:/data"
+      - "${DATA_DIR}/config/dolos.toml:/etc/dolos/dolos.toml:ro"
+    networks:
+      hydra-network:
+
 networks:
   hydra-network:
     name: hydra-network-${NETWORK}

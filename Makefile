@@ -84,6 +84,7 @@ CARDANO_TARGETS := cardano-start cardano-stop cardano-logs
 UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert
 UTILITY_TARGETS += check-tls-cert _guard-network _guard-instance _abort-if-exists _check-key-exists _prepare-directories
 UTILITY_TARGETS += gen-instance-env reset-instance-counter create-instance extract-cardano-privkey append-admin-pk _assert-middleware
+UTILITY_TARGETS += gen-dolos-config dolos-init dolos-logs
 UTILITY_TARGETS += test lint typecheck fmt check-releases validate-docker api-snapshot docs
 
 .PHONY: $(HYDRA_TARGETS) $(CARDANO_TARGETS) $(UTILITY_TARGETS)
@@ -112,7 +113,7 @@ _guard-network:
   		exit 1; \
 	fi
 
-DATA_DIRS = config node tls
+DATA_DIRS = config node tls dolos
 _prepare-directories: _guard-network
 	@for dir in $(DATA_DIRS); do \
 		mkdir -p "./data/${NETWORK}/$${dir}"; \
@@ -230,6 +231,20 @@ gen-trp-config: _guard-network _guard-instance
 	@echo "Generating TRP config for network=$(NETWORK) instance=$(INSTANCE)..."
 	@./scripts/generate-trp-config.sh "./data/$(NETWORK)/instances/$(INSTANCE)/config/trp.toml"
 
+gen-dolos-config: _guard-network _prepare-directories
+	@echo "Generating Dolos config for network=$(NETWORK)..."
+	@./scripts/generate-dolos-config.sh "./data/$(NETWORK)/config/dolos.toml"
+
+dolos-init: _guard-network _prepare-directories
+	@echo "Bootstrapping Dolos genesis files for network=$(NETWORK)..."
+	docker run --rm \
+		-v "$(CURDIR)/data/$(NETWORK)/dolos:/data" \
+		$(DOLOS_IMAGE) init --network $(NETWORK)
+	@echo "✅ Dolos genesis bootstrap complete for $(NETWORK)"
+
+dolos-logs: _guard-network
+	$(DOCKER_CARDANO) logs cardano-dolos -ft --tail=50
+
 gen-tls-cert: _guard-network
 	@echo "Preparing to generate self-signed cert for network=$(NETWORK)..."
 	@mkdir -p $(TLS_DIR)
@@ -336,10 +351,12 @@ help:
 	@echo ""
 	@echo "Usage: make NETWORK=<network> [INSTANCE=<id>] <target>"
 	@echo ""
-	@echo "── Cardano Node ────────────────────────────────────────────"
-	@echo "  cardano-start            Start Cardano node for NETWORK"
-	@echo "  cardano-stop             Stop Cardano node"
+	@echo "── Cardano Node & Dolos ────────────────────────────────────"
+	@echo "  cardano-start            Start Cardano node + Dolos for NETWORK"
+	@echo "  cardano-stop             Stop Cardano node + Dolos"
 	@echo "  cardano-logs             Tail Cardano node logs"
+	@echo "  dolos-logs               Tail Dolos logs"
+	@echo "  dolos-init               Bootstrap Dolos genesis files (one-time)"
 	@echo ""
 	@echo "── Hydra Instance ──────────────────────────────────────────"
 	@echo "  hydra-start              Start hydra-node + TRP + express-api"
@@ -364,6 +381,7 @@ help:
 	@echo "  gen-cardano-keys         Generate Cardano signing/verification keys + address"
 	@echo "  gen-cardano-address      Generate Cardano address from existing vk"
 	@echo "  gen-trp-config           Generate TRP config (trp.toml) for instance"
+	@echo "  gen-dolos-config         Generate Dolos config (dolos.toml) for network"
 	@echo "  gen-tls-cert             Generate self-signed TLS certificate"
 	@echo "  check-hydra-keys         Verify Hydra keys exist"
 	@echo "  check-cardano-keys       Verify Cardano keys exist"
@@ -380,10 +398,11 @@ help:
 	@echo "  docs                     Generate API reference docs to docs/api/"
 	@echo ""
 	@echo "── Port Allocation (base ports per network) ────────────────"
-	@echo "  Network   Cardano  Express  API   Listen  TRP"
-	@echo "  offline   3001     3000     4000  5000    8165"
-	@echo "  preprod   3100     3101     4101  5101    8265"
-	@echo "  mainnet   3000     3001     4001  5001    8165"
+	@echo "  Network   Cardano  Express  API   Listen  TRP(Hydra) TRP(Dolos) gRPC(Dolos)"
+	@echo "  offline   3001     3000     4000  5000    8165       —          —"
+	@echo "  preprod   3100     3101     4101  5101    8265       8164       50151"
+	@echo "  mainnet   3000     3001     4001  5001    8165       8064       50051"
 	@echo ""
 	@echo "  Per-instance ports = base + offset (auto-incremented)"
+	@echo "  Dolos ports are per-network (shared across instances)"
 	@echo ""

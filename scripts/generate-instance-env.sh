@@ -89,6 +89,9 @@ LISTEN_PORT=$(get_var LISTEN_PORT "${BASE_ENV}");LISTEN_PORT=${LISTEN_PORT:-5001
 TRP_PORT=$(get_var TRP_PORT "${BASE_ENV}");      TRP_PORT=${TRP_PORT:-8165}
 EXPRESS_PORT=$(get_var EXPRESS_PORT "${BASE_ENV}");EXPRESS_PORT=${EXPRESS_PORT:-3000}
 
+# Dolos is per-network (not per-instance), so read but don't offset
+DOLOS_TRP_PORT=$(get_var DOLOS_TRP_PORT "${BASE_ENV}"); DOLOS_TRP_PORT=${DOLOS_TRP_PORT:-}
+
 API_PORT=$(bump "${API_PORT}" "${OFFSET}")
 LISTEN_PORT=$(bump "${LISTEN_PORT}" "${OFFSET}")
 TRP_PORT=$(bump "${TRP_PORT}" "${OFFSET}")
@@ -128,5 +131,14 @@ X_API_KEY=${X_API_KEY}
 
 # EXPRESS_IMAGE=ghcr.io/lerna-labs/ekklesia-hydra:branch-main
 EOF
+
+# Append Dolos TRP URL if the network has Dolos configured
+if [[ -n "${DOLOS_TRP_PORT}" ]]; then
+  cat >> "${NEW_ENV}" <<EOF
+
+# Cardano L1 TRP (Dolos) — shared across instances on this network
+DOLOS_TRP_URL=http://cardano-dolos-\${NETWORK}:${DOLOS_TRP_PORT}
+EOF
+fi
 
 echo "✅ Created ${NEW_ENV}"
