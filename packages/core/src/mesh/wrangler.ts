@@ -83,7 +83,7 @@ export class Wrangler {
    * Hydra message. Handles connection, timeout, and settlement in one place.
    */
   private awaitMessage<T>(
-    handler: (message: HydraWsMessage, resolve: (value: T) => void) => void,
+    handler: (message: HydraWsMessage, resolve: (value: T) => void, reject: (reason: Error) => void) => void,
     timeoutMs: number,
     timeoutMessage: string,
   ): Promise<T> {
@@ -98,7 +98,11 @@ export class Wrangler {
       };
 
       this.provider.onMessage((message) => {
-        handler(message, (value) => settle(resolve, value));
+        handler(
+          message,
+          (value) => settle(resolve, value),
+          (reason) => settle(reject, reason),
+        );
       });
 
       const timer = setTimeout(() => settle(reject, new Error(timeoutMessage)), timeoutMs);
@@ -148,7 +152,7 @@ export class Wrangler {
   public async waitForHeadClose(timeoutMs = 180000): Promise<void> {
     this.mode = 'shutdown';
     return this.awaitMessage<void>(
-      (message, resolve) => {
+      (message, resolve, reject) => {
         switch (message.tag) {
           case 'HeadIsClosed':
           case 'HeadIsFinalized':
@@ -158,7 +162,9 @@ export class Wrangler {
             this.provider.fanout();
             break;
           case 'Greetings':
-            this.onGreetings(message.headStatus);
+            this.onGreetings(message.headStatus).catch((err) =>
+              reject(new Error(`Greetings handler failed: ${String(err)}`)),
+            );
             break;
         }
       },
@@ -175,14 +181,16 @@ export class Wrangler {
   public async waitForHeadOpen(commitArgs: CommitArgs, timeoutMs = 180000): Promise<void> {
     this.mode = 'start';
     return this.awaitMessage<void>(
-      (message, resolve) => {
+      (message, resolve, reject) => {
         if (message.tag === 'HeadIsOpen') {
           resolve();
         } else if (message.tag === 'HeadIsInitializing') {
           if (!commitArgs) return;
-          this.doCommit(commitArgs);
+          this.doCommit(commitArgs).catch((err) => reject(new Error(`Commit failed: ${String(err)}`)));
         } else if (message.tag === 'Greetings') {
-          this.onGreetings(message.headStatus, commitArgs);
+          this.onGreetings(message.headStatus, commitArgs).catch((err) =>
+            reject(new Error(`Greetings handler failed: ${String(err)}`)),
+          );
         }
       },
       timeoutMs,
@@ -197,7 +205,7 @@ export class Wrangler {
    */
   public async getHeadStatus(timeoutMs = 5000): Promise<HeadStatus> {
     return this.awaitMessage<HeadStatus>(
-      (message, resolve) => {
+      (message, resolve, _reject) => {
         if (message.tag === 'Greetings') {
           resolve(message.headStatus);
         }
@@ -208,13 +216,8 @@ export class Wrangler {
   }
 
   private async doCommit(commitArgs: CommitArgs) {
-    try {
-      const rawTx = await this.instance.commitFunds(commitArgs.txHash, commitArgs.txIndex);
-      return await this.blockfrost.submitTx(rawTx);
-    } catch (err: unknown) {
-      console.error(`Commit error`, err);
-      return false;
-    }
+    const rawTx = await this.instance.commitFunds(commitArgs.txHash, commitArgs.txIndex);
+    return await this.blockfrost.submitTx(rawTx);
   }
 
   private async handleIncoming(message: HydraWsMessage, commitArgs?: CommitArgs) {
@@ -228,7 +231,11 @@ export class Wrangler {
               console.error('No commit arguments specified... aborting commit!');
               return;
             }
-            await this.doCommit(commitArgs);
+            try {
+              await this.doCommit(commitArgs);
+            } catch (err) {
+              console.error('Commit failed during startHead:', err);
+            }
           }
           if (message.tag === 'HeadIsOpen') {
             // Successfully started the head here... close gracefully?

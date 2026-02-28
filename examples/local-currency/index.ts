@@ -3,7 +3,9 @@ import './load';
 import {
   createMultisigAddress,
   getAdmin,
+  optionalEnv,
   queryUtxoByAddress,
+  requireEnv,
   submitTx,
   verifySignature,
   Wrangler,
@@ -14,13 +16,31 @@ import { ArgValue } from 'tx3-sdk/trp';
 import { authHeaderMiddleware } from './middleware';
 import { Client } from './protocol';
 
+/** Simple async mutex to serialize transaction building and prevent UTxO contention. */
+class Mutex {
+  private chain = Promise.resolve();
+
+  async acquire(): Promise<() => void> {
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const prev = this.chain;
+    this.chain = this.chain.then(() => next);
+    await prev;
+    return release;
+  }
+}
+
+const txMutex = new Mutex();
+
 const app = express();
 app.use(express.json());
 app.use(authHeaderMiddleware);
-const port = process.env.EXPRESS_PORT || 3000;
-const TRP_URL = process.env.TRP_URL as string;
-const HYDRA_NETWORK = parseInt(process.env.HYDRA_NETWORK || '0', 10);
-const BYPASS_TOKEN = process.env.BYPASS_TOKEN || 'true';
+const port = optionalEnv('EXPRESS_PORT', '3000');
+const TRP_URL = requireEnv('TRP_URL');
+const HYDRA_NETWORK = parseInt(optionalEnv('HYDRA_NETWORK', '0'), 10);
+const BYPASS_TOKEN = optionalEnv('BYPASS_TOKEN', 'true');
 
 type initializePayload = {
   admin_wallet?: MeshWallet;
@@ -210,6 +230,7 @@ app.post('/send', async (req, res) => {
   const signature = req.body.signature;
   const signature_key = req.body.key;
 
+  const release = await txMutex.acquire();
   try {
     const { isValid, sigMeta, pubKeyHex } =
       req.headers['x-bypass-validation'] !== BYPASS_TOKEN
@@ -289,6 +310,8 @@ app.post('/send', async (req, res) => {
       status: 'ERROR',
       message: 'Could not create transaction, please try again',
     });
+  } finally {
+    release();
   }
 });
 
@@ -297,45 +320,46 @@ app.post('/reward', async (req, res) => {
   const reason = req.body.reason;
   const quantity = req.body.quantity;
 
-  const { admin_wallet, address, client } = await initialize(user_address);
-
-  if (!admin_wallet) {
-    res.json({
-      status: 'ERROR',
-      message: 'Could not initialize admin wallet',
-    });
-    return;
-  }
-
-  const admin_payment_address = admin_wallet.addresses.enterpriseAddressBech32 as string;
-
-  if (!address) {
-    res.json({
-      status: 'ERROR',
-      message: 'Could not initialize user address',
-    });
-    return;
-  }
-
-  if (!client) {
-    res.json({
-      status: 'ERROR',
-      message: 'Could not start the TRP client!',
-    });
-    return;
-  }
-
-  console.log(`Attempting to issue ${quantity} rewards from ${admin_payment_address} to ${address} for: ${reason}`);
-
-  const mintArgs = {
-    admin: ArgValue.from(admin_payment_address),
-    metadataValue: ArgValue.from(Buffer.from(reason, 'utf-8')),
-    quantity: ArgValue.from(quantity),
-    receiver: ArgValue.from(address as string),
-    mintingScript: ArgValue.from(Buffer.from('820181820400', 'hex')),
-  };
-
+  const release = await txMutex.acquire();
   try {
+    const { admin_wallet, address, client } = await initialize(user_address);
+
+    if (!admin_wallet) {
+      res.json({
+        status: 'ERROR',
+        message: 'Could not initialize admin wallet',
+      });
+      return;
+    }
+
+    const admin_payment_address = admin_wallet.addresses.enterpriseAddressBech32 as string;
+
+    if (!address) {
+      res.json({
+        status: 'ERROR',
+        message: 'Could not initialize user address',
+      });
+      return;
+    }
+
+    if (!client) {
+      res.json({
+        status: 'ERROR',
+        message: 'Could not start the TRP client!',
+      });
+      return;
+    }
+
+    console.log(`Attempting to issue ${quantity} rewards from ${admin_payment_address} to ${address} for: ${reason}`);
+
+    const mintArgs = {
+      admin: ArgValue.from(admin_payment_address),
+      metadataValue: ArgValue.from(Buffer.from(reason, 'utf-8')),
+      quantity: ArgValue.from(quantity),
+      receiver: ArgValue.from(address as string),
+      mintingScript: ArgValue.from(Buffer.from('820181820400', 'hex')),
+    };
+
     const response = await client.mintCoinsTx(mintArgs);
     const signedTx = await admin_wallet.signTx(response.tx);
     const submit_response = await submitTx(TRP_URL, signedTx, reason);
@@ -364,6 +388,8 @@ app.post('/reward', async (req, res) => {
       status: 'ERROR',
       message: 'Could not mint coins',
     });
+  } finally {
+    release();
   }
 });
 
@@ -371,35 +397,36 @@ app.post('/merge', async (req, res) => {
   const user_address = req.body.address;
   const ref_utxo = req.body.input;
 
-  const { admin_wallet, address, scriptCbor, client } = await initialize(user_address);
-
-  if (!admin_wallet) {
-    res.json({
-      status: 'ERROR',
-      message: 'Could not initialize admin wallet',
-    });
-    return;
-  }
-
-  const admin_payment_address = admin_wallet.addresses.enterpriseAddressBech32 as string;
-
-  if (!address) {
-    res.json({
-      status: 'ERROR',
-      message: 'Could not initialize user address',
-    });
-    return;
-  }
-
-  if (!client) {
-    res.json({
-      status: 'ERROR',
-      message: 'Could not start the TRP client!',
-    });
-    return;
-  }
-
+  const release = await txMutex.acquire();
   try {
+    const { admin_wallet, address, scriptCbor, client } = await initialize(user_address);
+
+    if (!admin_wallet) {
+      res.json({
+        status: 'ERROR',
+        message: 'Could not initialize admin wallet',
+      });
+      return;
+    }
+
+    const admin_payment_address = admin_wallet.addresses.enterpriseAddressBech32 as string;
+
+    if (!address) {
+      res.json({
+        status: 'ERROR',
+        message: 'Could not initialize user address',
+      });
+      return;
+    }
+
+    if (!client) {
+      res.json({
+        status: 'ERROR',
+        message: 'Could not start the TRP client!',
+      });
+      return;
+    }
+
     const response = await client.mergeEmptyTx({
       admin: ArgValue.from(admin_payment_address),
       emptyref: ArgValue.from(ref_utxo),
@@ -429,6 +456,8 @@ app.post('/merge', async (req, res) => {
   } catch (err: any) {
     console.error('Could not merge?', err);
     res.json({ status: 'ERROR', message: 'Could not merge?' });
+  } finally {
+    release();
   }
 });
 
@@ -436,34 +465,35 @@ app.post('/burn', async (req, res) => {
   const user_address = req.body.address;
   const quantity = req.body.quantity;
 
-  const { admin_wallet, address, scriptCbor, client } = await initialize(user_address);
-
-  if (!admin_wallet) {
-    res.json({
-      status: 'ERROR',
-      message: 'Could not initialize admin wallet',
-    });
-    return;
-  }
-
-  if (!client) {
-    res.json({
-      status: 'ERROR',
-      message: 'Could not start the TRP client!',
-    });
-    return;
-  }
-
-  const burner_address = admin_wallet.addresses.enterpriseAddressBech32 === user_address ? user_address : address;
-
-  const burn_args = {
-    burner: ArgValue.from(burner_address as string),
-    quantity: ArgValue.from(quantity),
-    mintingScript: ArgValue.from(Buffer.from('820181820400', 'hex')),
-    userScript: ArgValue.from(Buffer.from(scriptCbor as string, 'hex')),
-  };
-
+  const release = await txMutex.acquire();
   try {
+    const { admin_wallet, address, scriptCbor, client } = await initialize(user_address);
+
+    if (!admin_wallet) {
+      res.json({
+        status: 'ERROR',
+        message: 'Could not initialize admin wallet',
+      });
+      return;
+    }
+
+    if (!client) {
+      res.json({
+        status: 'ERROR',
+        message: 'Could not start the TRP client!',
+      });
+      return;
+    }
+
+    const burner_address = admin_wallet.addresses.enterpriseAddressBech32 === user_address ? user_address : address;
+
+    const burn_args = {
+      burner: ArgValue.from(burner_address as string),
+      quantity: ArgValue.from(quantity),
+      mintingScript: ArgValue.from(Buffer.from('820181820400', 'hex')),
+      userScript: ArgValue.from(Buffer.from(scriptCbor as string, 'hex')),
+    };
+
     const response = await client.burnCoinsTx(burn_args);
     const signedTx = await admin_wallet.signTx(response.tx);
     const submit_response = await submitTx(TRP_URL, signedTx, 'burnbabyburn');
@@ -489,40 +519,42 @@ app.post('/burn', async (req, res) => {
       status: 'ERROR',
       message: 'Could not create burn transaction, please try again',
     });
-    return;
+  } finally {
+    release();
   }
 });
 
 app.post('/adminburn', async (req, res) => {
   const quantity = req.body.quantity;
 
-  const { admin_wallet, client } = await initialize();
-
-  if (!admin_wallet) {
-    res.json({
-      status: 'ERROR',
-      message: 'Could not initialize admin wallet',
-    });
-    return;
-  }
-
-  if (!client) {
-    res.json({
-      status: 'ERROR',
-      message: 'Could not start the TRP client!',
-    });
-    return;
-  }
-
-  const admin_payment_address = admin_wallet.addresses.enterpriseAddressBech32 as string;
-
-  const burn_args = {
-    admin: ArgValue.from(admin_payment_address),
-    quantity: ArgValue.from(quantity),
-    mintingScript: ArgValue.from(Buffer.from('820181820400', 'hex')),
-  };
-
+  const release = await txMutex.acquire();
   try {
+    const { admin_wallet, client } = await initialize();
+
+    if (!admin_wallet) {
+      res.json({
+        status: 'ERROR',
+        message: 'Could not initialize admin wallet',
+      });
+      return;
+    }
+
+    if (!client) {
+      res.json({
+        status: 'ERROR',
+        message: 'Could not start the TRP client!',
+      });
+      return;
+    }
+
+    const admin_payment_address = admin_wallet.addresses.enterpriseAddressBech32 as string;
+
+    const burn_args = {
+      admin: ArgValue.from(admin_payment_address),
+      quantity: ArgValue.from(quantity),
+      mintingScript: ArgValue.from(Buffer.from('820181820400', 'hex')),
+    };
+
     const response = await client.adminBurnTx(burn_args);
     const signedTx = await admin_wallet.signTx(response.tx);
     const submit_response = await submitTx(TRP_URL, signedTx, 'burnbabyburn');
@@ -547,7 +579,8 @@ app.post('/adminburn', async (req, res) => {
       status: 'ERROR',
       message: 'Could not create burn transaction, please try again',
     });
-    return;
+  } finally {
+    release();
   }
 });
 

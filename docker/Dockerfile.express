@@ -1,3 +1,5 @@
+# Default dev middleware — builds the examples/local-currency app.
+# Deployers can override with EXPRESS_IMAGE to bring their own middleware.
 FROM node:22-alpine
 
 RUN apk add --no-cache bash
@@ -5,19 +7,15 @@ RUN apk add --no-cache bash
 WORKDIR /usr/src/app
 
 # Copy package metadata first to leverage layer caching
-COPY ../package*.json ./
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY packages/ packages/
+COPY examples/local-currency/ examples/local-currency/
 
-# Run npm install
-RUN npm install
-
-# Copy tsconfig if used
-COPY ../tsconfig.json ./
-
-# Copy source
-COPY ../packages/middleware/src ./src
+RUN npm ci
 
 EXPOSE 3000
 
 ENV NODE_ENV=development
 
-CMD ["npx", "tsx", "watch", "src/index.ts"]
+CMD ["npx", "tsx", "watch", "examples/local-currency/index.ts"]

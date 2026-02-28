@@ -26,15 +26,18 @@ const mockBlockfrost = {
 };
 
 vi.mock('@meshsdk/hydra', () => ({
+  // biome-ignore lint/complexity/useArrowFunction: must be constructable with `new`
   HydraProvider: function () {
     return mockProvider;
   },
+  // biome-ignore lint/complexity/useArrowFunction: must be constructable with `new`
   HydraInstance: function () {
     return mockInstance;
   },
 }));
 
 vi.mock('@meshsdk/core', () => ({
+  // biome-ignore lint/complexity/useArrowFunction: must be constructable with `new`
   BlockfrostProvider: function () {
     return mockBlockfrost;
   },

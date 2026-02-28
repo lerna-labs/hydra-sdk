@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { MeshWallet } from '@meshsdk/core';
+import { optionalEnv } from '../config.js';
 
 /**
  * Create and initialize a MeshWallet for the Hydra head admin.
@@ -31,7 +32,7 @@ export async function getAdmin(): Promise<MeshWallet> {
     );
   }
 
-  let networkId = parseInt(process.env.HYDRA_NETWORK || '0', 10);
+  let networkId = parseInt(optionalEnv('HYDRA_NETWORK', '0'), 10);
 
   if (networkId < 0) {
     networkId = 0;

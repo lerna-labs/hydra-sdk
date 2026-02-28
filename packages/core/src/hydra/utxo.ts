@@ -72,19 +72,12 @@ export async function getUtxoSet(): Promise<ParsedUtxo[]> {
  * @returns UTxOs matching the given address.
  */
 export async function queryUtxoByAddress(address: string): Promise<ParsedUtxo[]> {
-  console.log(`Querying UTxO by Address: ${address}`);
-
-  try {
-    const result: ParsedUtxo[] = [];
-    const data = await getUtxoSet();
-    for (const utxo of data) {
-      if (utxo.address === address) {
-        result.push(utxo);
-      }
+  const result: ParsedUtxo[] = [];
+  const data = await getUtxoSet();
+  for (const utxo of data) {
+    if (utxo.address === address) {
+      result.push(utxo);
     }
-    return result;
-  } catch (error: unknown) {
-    console.error('Failed to fetch or parse UTxO snapshot:', error instanceof Error ? error.message : String(error));
-    throw error;
   }
+  return result;
 }

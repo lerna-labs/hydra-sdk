@@ -55,6 +55,7 @@ services:
     container_name: hydra-express-api-${NETWORK}
     depends_on:
       - hydra-trp
+    image: ${EXPRESS_IMAGE:-hydra-express-local}
     build:
       context: ..
       dockerfile: docker/Dockerfile.express
@@ -72,7 +73,7 @@ services:
       - ..:/usr/src/app:delegated
       - /usr/src/app/node_modules
       - "${DATA_DIR}/instances/${INSTANCE}/keys:/${NETWORK}/keys:ro"
-    command: [ "npx", "tsx", "watch", "src/index.ts" ]
+    command: [ "npx", "tsx", "watch", "examples/local-currency/index.ts" ]
     networks:
       hydra-network:
     restart: unless-stopped
