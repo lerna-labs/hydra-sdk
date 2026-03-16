@@ -84,7 +84,7 @@ CARDANO_TARGETS := cardano-start cardano-stop cardano-logs
 UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert
 UTILITY_TARGETS += check-tls-cert _guard-network _guard-instance _abort-if-exists _check-key-exists _prepare-directories
 UTILITY_TARGETS += gen-instance-env reset-instance-counter create-instance extract-cardano-privkey append-admin-pk _assert-middleware
-UTILITY_TARGETS += gen-dolos-config dolos-init dolos-logs
+UTILITY_TARGETS += dolos-init dolos-logs
 UTILITY_TARGETS += test lint typecheck fmt check-releases validate-docker api-snapshot docs
 
 .PHONY: $(HYDRA_TARGETS) $(CARDANO_TARGETS) $(UTILITY_TARGETS)
@@ -231,16 +231,16 @@ gen-trp-config: _guard-network _guard-instance
 	@echo "Generating TRP config for network=$(NETWORK) instance=$(INSTANCE)..."
 	@./scripts/generate-trp-config.sh "./data/$(NETWORK)/instances/$(INSTANCE)/config/trp.toml"
 
-gen-dolos-config: _guard-network _prepare-directories
-	@echo "Generating Dolos config for network=$(NETWORK)..."
-	@./scripts/generate-dolos-config.sh "./data/$(NETWORK)/config/dolos.toml"
-
 dolos-init: _guard-network _prepare-directories
-	@echo "Bootstrapping Dolos genesis files for network=$(NETWORK)..."
-	docker run --rm \
+	@echo "Initializing Dolos for network=$(NETWORK)..."
+	docker run --rm -it \
 		-v "$(CURDIR)/data/$(NETWORK)/dolos:/data" \
-		$(DOLOS_IMAGE) init --network $(NETWORK)
-	@echo "✅ Dolos genesis bootstrap complete for $(NETWORK)"
+		-w /data \
+		$(DOLOS_IMAGE) init --known-network $(NETWORK) \
+			--serve-grpc true --serve-trp true \
+			--serve-ouroboros false --serve-minibf false \
+			--enable-relay false
+	@echo "✅ Dolos initialized for $(NETWORK) — config + genesis saved to data/$(NETWORK)/dolos/"
 
 dolos-logs: _guard-network
 	$(DOCKER_CARDANO) logs cardano-dolos -ft --tail=50
@@ -381,7 +381,6 @@ help:
 	@echo "  gen-cardano-keys         Generate Cardano signing/verification keys + address"
 	@echo "  gen-cardano-address      Generate Cardano address from existing vk"
 	@echo "  gen-trp-config           Generate TRP config (trp.toml) for instance"
-	@echo "  gen-dolos-config         Generate Dolos config (dolos.toml) for network"
 	@echo "  gen-tls-cert             Generate self-signed TLS certificate"
 	@echo "  check-hydra-keys         Verify Hydra keys exist"
 	@echo "  check-cardano-keys       Verify Cardano keys exist"

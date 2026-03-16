@@ -19,15 +19,14 @@ services:
     container_name: cardano-dolos-${NETWORK}
     image: ${DOLOS_IMAGE}
     restart: unless-stopped
+    working_dir: /data
     depends_on:
       - cardano-node
     command: ["daemon"]
     ports:
-      - "${DOLOS_TRP_PORT}:${DOLOS_TRP_PORT}"
-      - "${DOLOS_GRPC_PORT}:${DOLOS_GRPC_PORT}"
+      - "${DOLOS_TRP_PORT}:8000"
     volumes:
       - "${DATA_DIR}/dolos:/data"
-      - "${DATA_DIR}/config/dolos.toml:/etc/dolos/dolos.toml:ro"
     networks:
       hydra-network:
 
