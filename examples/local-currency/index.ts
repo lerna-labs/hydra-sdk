@@ -1,4 +1,4 @@
-import './load';
+import './load.js';
 
 import {
   createMultisigAddress,
@@ -13,8 +13,8 @@ import {
 import type { MeshWallet } from '@meshsdk/core';
 import express from 'express';
 import { ArgValue } from 'tx3-sdk/trp';
-import { authHeaderMiddleware } from './middleware';
-import { Client } from './protocol';
+import { authHeaderMiddleware } from './middleware.js';
+import { Client } from './protocol.js';
 
 /** Simple async mutex to serialize transaction building and prevent UTxO contention. */
 class Mutex {

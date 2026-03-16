@@ -79,7 +79,7 @@ HYDRA_PROJECT := hydra-$(NETWORK)-$(INSTANCE)
 DOCKER_HYDRA := docker compose -f $(HYDRA_COMPOSE) -p $(HYDRA_PROJECT)
 
 # List of make commands
-HYDRA_TARGETS := hydra-start hydra-stop hydra-down hydra-logs hydra-restart hydra-clean hydra-rebuild hydra-status hydra-stats
+HYDRA_TARGETS := hydra-start hydra-stop hydra-down hydra-logs hydra-restart hydra-clean hydra-rebuild hydra-pull hydra-status hydra-stats
 CARDANO_TARGETS := cardano-start cardano-stop cardano-logs
 UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert
 UTILITY_TARGETS += check-tls-cert _guard-network _guard-instance _abort-if-exists _check-key-exists _prepare-directories
@@ -151,6 +151,9 @@ hydra-restart: _assert-middleware
 hydra-rebuild: _assert-middleware
 	$(DOCKER_HYDRA) build --no-cache --pull && \
 	$(MAKE) hydra-start
+
+hydra-pull: _assert-middleware
+	$(DOCKER_HYDRA) pull
 
 hydra-logs: _assert-middleware
 	$(DOCKER_HYDRA) logs -ft --tail=50
@@ -365,6 +368,7 @@ help:
 	@echo "  hydra-clean              Stop, remove containers + orphans"
 	@echo "  hydra-restart            Restart Hydra services"
 	@echo "  hydra-rebuild            Rebuild images (no cache) and start"
+	@echo "  hydra-pull               Pull latest images (use before restart)"
 	@echo "  hydra-logs               Tail Hydra service logs"
 	@echo "  hydra-status             Show container status"
 	@echo "  hydra-stats              Show live container resource usage"
