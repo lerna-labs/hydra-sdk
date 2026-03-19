@@ -1,15 +1,23 @@
 import { BlockfrostProvider } from '@meshsdk/core';
-import type { hydraStatus } from '@meshsdk/hydra';
+import type { hydraStatus, hydraTransaction } from '@meshsdk/hydra';
 import { HydraInstance, HydraProvider } from '@meshsdk/hydra';
 import { requireEnv } from '../config.js';
 import type { HeadStatus, HydraWsMessage } from '../hydra/messages.js';
 
-/** UTxO reference used to commit funds into a Hydra head. */
-export interface CommitArgs {
-  /** Transaction hash containing the UTxO to commit. */
+/** UTxO reference for committing funds into a Hydra head. */
+export interface UTxORef {
+  /** Transaction hash containing the UTxO. */
   txHash: string;
   /** Output index of the UTxO within the transaction. */
-  txIndex: number;
+  outputIndex: number;
+}
+
+/** Arguments for committing UTxOs into a Hydra head. */
+export interface CommitArgs {
+  /** One or more UTxO references to commit. */
+  utxos: UTxORef[];
+  /** Blueprint transaction that spends the committed UTxOs (CBOR-encoded, unsigned). Optional — omit for simple ADA-only commits. */
+  blueprintTx?: hydraTransaction;
 }
 
 /**
@@ -21,7 +29,10 @@ export interface CommitArgs {
  * @example
  * ```ts
  * const wrangler = new Wrangler("http://localhost:4001");
- * await wrangler.waitForHeadOpen({ txHash: "abc...", txIndex: 0 });
+ * await wrangler.waitForHeadOpen({
+ *   utxos: [{ txHash: "abc...", outputIndex: 0 }],
+ *   blueprintTx: { type: "Tx ConwayEra", cborHex: "...", description: "" },
+ * });
  * ```
  */
 export class Wrangler {
@@ -132,9 +143,9 @@ export class Wrangler {
   }
 
   /** Begin the head-opening sequence: init, commit, and listen for state changes. */
-  public async startHead(txHash: string, txIndex: number) {
+  public async startHead(commitArgs: CommitArgs) {
     this.mode = 'start';
-    this.provider.onMessage((msg) => this.handleIncoming(msg, { txHash, txIndex }));
+    this.provider.onMessage((msg) => this.handleIncoming(msg, commitArgs));
     await this.connectWithRetry();
   }
 
@@ -216,7 +227,96 @@ export class Wrangler {
   }
 
   private async doCommit(commitArgs: CommitArgs) {
-    const rawTx = await this.instance.commitFunds(commitArgs.txHash, commitArgs.txIndex);
+    let rawTx: string;
+    if (commitArgs.blueprintTx) {
+      rawTx = await this.instance.commitBlueprintUTxOs(commitArgs.utxos, commitArgs.blueprintTx);
+    } else if (commitArgs.utxos.length === 0) {
+      rawTx = await this.instance.commitEmpty();
+    } else if (commitArgs.utxos.length === 1) {
+      const { txHash, outputIndex } = commitArgs.utxos[0];
+      rawTx = await this.instance.commitFunds(txHash, outputIndex);
+    } else {
+      throw new Error('Multiple UTxOs without a blueprintTx require a blueprint transaction');
+    }
+    return await this.blockfrost.submitTx(rawTx);
+  }
+
+  /**
+   * Decommit funds from an open Hydra head back to L1.
+   *
+   * Posts the decommit transaction via `provider.publishDecommit()` (HTTP POST)
+   * instead of `provider.decommit()` to avoid overwriting the Wrangler's
+   * `onMessage` handler (single-callback replacement pattern).
+   *
+   * Resolves on `DecommitApproved` — L1 settlement happens asynchronously.
+   *
+   * @param transaction - The decommit transaction (CBOR-encoded).
+   * @param timeoutMs - Maximum time to wait for approval (default 60s).
+   */
+  public async decommit(transaction: hydraTransaction, timeoutMs = 60000): Promise<void> {
+    const status = await this.getHeadStatus();
+    if (status !== 'Open') {
+      throw new Error(`Cannot decommit: head is "${status}", expected "Open"`);
+    }
+
+    const result = this.awaitMessage<void>(
+      (message, resolve, reject) => {
+        if (message.tag === 'DecommitApproved') {
+          resolve();
+        } else if (message.tag === 'DecommitInvalid') {
+          reject(new Error(`Decommit invalid: ${JSON.stringify((message as any).decommitInvalidReason)}`));
+        }
+      },
+      timeoutMs,
+      'Timeout waiting for decommit approval',
+    );
+
+    await this.provider.publishDecommit(transaction);
+
+    return result;
+  }
+
+  /**
+   * Incrementally commit funds into an already-open Hydra head.
+   *
+   * Only single-UTxO commits are supported (MeshJS limitation).
+   * The raw L1 transaction is submitted to Blockfrost automatically.
+   *
+   * Resolves on `CommitFinalized`.
+   *
+   * @param commitArgs - Single UTxO (with optional blueprint) to commit.
+   * @param timeoutMs - Maximum time to wait for finalization (default 120s).
+   */
+  public async incrementalCommit(commitArgs: CommitArgs, timeoutMs = 120000): Promise<void> {
+    const status = await this.getHeadStatus();
+    if (status !== 'Open') {
+      throw new Error(`Cannot incrementally commit: head is "${status}", expected "Open"`);
+    }
+
+    await this.doIncrementalCommit(commitArgs);
+
+    return this.awaitMessage<void>(
+      (message, resolve, _reject) => {
+        if (message.tag === 'CommitFinalized') {
+          resolve();
+        }
+      },
+      timeoutMs,
+      'Timeout waiting for incremental commit finalization',
+    );
+  }
+
+  private async doIncrementalCommit(commitArgs: CommitArgs) {
+    if (commitArgs.utxos.length !== 1) {
+      throw new Error('Incremental commit requires exactly one UTxO');
+    }
+    const { txHash, outputIndex } = commitArgs.utxos[0];
+    let rawTx: string;
+    if (commitArgs.blueprintTx) {
+      rawTx = await this.instance.incrementalBlueprintCommit(txHash, outputIndex, commitArgs.blueprintTx);
+    } else {
+      rawTx = await this.instance.incrementalCommitFunds(txHash, outputIndex);
+    }
     return await this.blockfrost.submitTx(rawTx);
   }
 

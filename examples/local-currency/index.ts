@@ -108,19 +108,26 @@ app.get('/health', async (_, res) => {
 
 app.post('/start', async (req, res) => {
   const wrangler = new Wrangler(process.env.HYDRA_API_URL, process.env.HYDRA_WS_URL);
-  const txHash = req.body.txHash;
-  const txIndex = req.body.txIdx;
+  const { utxos, blueprintTx } = req.body;
 
-  if (!txHash || txIndex === undefined || txIndex === null || txIndex < 0) {
-    console.error(`Bad commit identifiers:`, txHash, txIndex);
+  if (!Array.isArray(utxos)) {
+    console.error('Bad commit payload:', JSON.stringify(req.body));
     return res.status(400).json({
       status: 'ERROR',
-      message: 'Bad Commit UTxO Identifiers',
+      message: 'Request body must include utxos[]',
+    });
+  }
+
+  if (utxos.length > 1 && !blueprintTx?.cborHex) {
+    console.error('Bad commit payload:', JSON.stringify(req.body));
+    return res.status(400).json({
+      status: 'ERROR',
+      message: 'Multiple UTxOs require a blueprintTx with cborHex',
     });
   }
 
   try {
-    await wrangler.waitForHeadOpen({ txHash, txIndex }, 180000);
+    await wrangler.waitForHeadOpen({ utxos, blueprintTx }, 180000);
     return res.json({
       status: 'SUCCESS',
       message: 'Head is open',

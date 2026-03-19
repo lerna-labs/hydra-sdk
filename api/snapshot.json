@@ -7,12 +7,12 @@
         {
           "name": "bufferToAscii",
           "kind": "function",
-          "signature": "(buffer: any) => string"
+          "signature": "(buffer: Uint8Array | string) => string"
         },
         {
           "name": "bufferToHex",
           "kind": "function",
-          "signature": "(buffer: any) => string"
+          "signature": "(buffer: Uint8Array | string) => string"
         },
         {
           "name": "chunkString",
@@ -90,6 +90,11 @@
           "signature": "(submit_endpoint: string, payload: string, id: string) => Promise<Response>"
         },
         {
+          "name": "UTxORef",
+          "kind": "interface",
+          "signature": "any"
+        },
+        {
           "name": "verifySignature",
           "kind": "function",
           "signature": "(signature: string, message: string, signingAddress: string, signatureKey: string) => { isValid: boolean; sigMeta: string[]; pubKeyHex: string; }"
@@ -105,6 +110,11 @@
               "signature": "() => Promise<void>"
             },
             {
+              "name": "decommit",
+              "kind": "method",
+              "signature": "(transaction: hydraTransaction, timeoutMs?: number) => Promise<void>"
+            },
+            {
               "name": "disconnect",
               "kind": "method",
               "signature": "(timeout?: number) => Promise<void>"
@@ -118,6 +128,11 @@
               "name": "getStatus",
               "kind": "method",
               "signature": "() => hydraStatus"
+            },
+            {
+              "name": "incrementalCommit",
+              "kind": "method",
+              "signature": "(commitArgs: CommitArgs, timeoutMs?: number) => Promise<void>"
             },
             {
               "name": "onStatusChange",
@@ -137,7 +152,7 @@
             {
               "name": "startHead",
               "kind": "method",
-              "signature": "(txHash: string, txIndex: number) => Promise<void>"
+              "signature": "(commitArgs: CommitArgs) => Promise<void>"
             },
             {
               "name": "waitForHeadClose",
