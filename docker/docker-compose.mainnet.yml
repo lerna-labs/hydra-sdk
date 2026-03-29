@@ -56,8 +56,10 @@ services:
       - NETWORK=${NETWORK}
       - NODE_ENV=development
       - HYDRA_ADMIN_KEY_FILE=/${NETWORK}/keys/${INSTANCE}.cardano.sk
+      - IPFS_STAGING_DIR=/ipfs-staging
     volumes:
       - "${DATA_DIR}/instances/${INSTANCE}/keys:/${NETWORK}/keys:ro"
+      - "${DATA_DIR}/instances/${INSTANCE}/ipfs-staging:/ipfs-staging"
     ports:
       - "${EXPRESS_PORT}:3000"
     networks:

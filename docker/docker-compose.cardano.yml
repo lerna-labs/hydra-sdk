@@ -30,6 +30,21 @@ services:
     networks:
       hydra-network:
 
+  ipfs-node:
+    container_name: ipfs-node-${NETWORK}
+    image: ipfs/kubo:latest
+    restart: unless-stopped
+    ports:
+      - "${IPFS_API_PORT:-5001}:5001"
+      - "${IPFS_GATEWAY_PORT:-8080}:8080"
+    volumes:
+      - "${DATA_DIR}/ipfs/data:/data/ipfs"
+      - "${DATA_DIR}/ipfs/staging:/export"
+    environment:
+      - IPFS_PATH=/data/ipfs
+    networks:
+      hydra-network:
+
 networks:
   hydra-network:
     name: hydra-network-${NETWORK}

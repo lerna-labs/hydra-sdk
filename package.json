@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "lint": "biome check packages/ examples/",
     "lint:fix": "biome check --write packages/ examples/",
-    "typecheck": "tsc -p packages/core/tsconfig.build.json --noEmit && tsc -p packages/proof/tsconfig.build.json --noEmit && tsc -p examples/local-currency/tsconfig.json --noEmit",
+    "typecheck": "tsc -p packages/core/tsconfig.build.json --noEmit && tsc -p packages/proof/tsconfig.build.json --noEmit && tsc -p examples/local-currency/tsconfig.json --noEmit && tsc -p examples/notary/tsconfig.json --noEmit",
     "start:api": "tsx watch examples/local-currency/index.ts",
     "build": "npm run build -ws",
     "build:sdk": "npm run build -w @lerna-labs/hydra-sdk",
@@ -39,7 +39,8 @@
     "packages": [
       "packages/core",
       "packages/proof",
-      "examples/local-currency"
+      "examples/local-currency",
+      "examples/notary"
     ]
   },
   "devDependencies": {

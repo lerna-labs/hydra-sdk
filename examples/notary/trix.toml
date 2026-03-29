@@ -1,0 +1,10 @@
+[protocol]
+name = "notary"
+version = "0.1.0"
+main = "main.tx3"
+
+[ledger]
+family = "cardano"
+
+[[codegen]]
+plugin = "ts-client"

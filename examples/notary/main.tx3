@@ -1,0 +1,47 @@
+party Notary;
+
+party Submitter;
+
+asset STAMP = 0x0000000000000000000000000000000000000000000000000000000a."STAMP";
+
+env {
+    collateral_utxo: UtxoRef,
+    minting_script: Bytes,
+}
+
+tx notarize(
+    ipfs_cid: Bytes,
+    doc_hash: Bytes,
+) {
+    input* gas {
+        from: Notary,
+        min_amount: fees + Ada(1),
+    }
+
+    mint {
+        amount: STAMP(1),
+    }
+
+    output {
+        to: Submitter,
+        amount: STAMP(1),
+    }
+
+    output {
+        to: Notary,
+        amount: gas - fees,
+    }
+
+    cardano::native_witness {
+        script: minting_script,
+    }
+
+    validity {
+        since_slot: 1,
+    }
+
+    metadata {
+        0: ipfs_cid,
+        1: doc_hash,
+    }
+}
