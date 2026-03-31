@@ -55,42 +55,35 @@ describe('createMultisigAddress', () => {
 });
 
 describe('createNativeScript', () => {
-  it('creates script with one key hash and default "all" type', () => {
+  it('creates a bare sig script when called without options', () => {
     const result = createNativeScript('addr1');
 
-    expect(mockedSerialize).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'all',
-        scripts: [{ type: 'sig', keyHash: 'hash_addr1' }],
-      }),
-      undefined,
-      0,
-    );
+    expect(mockedSerialize).toHaveBeenCalledWith({ type: 'sig', keyHash: 'hash_addr1' }, undefined, 0);
     expect(result.address).toBe('addr_script1...');
+    expect(result.scriptCbor).toBe('script_cbor_hex');
+    expect(result.scriptHash).toBe('script_hash_abc');
   });
 
-  it('adds invalidBefore time-lock', () => {
-    createNativeScript('addr1', 0, 'all', 1000, null);
+  it('creates a compound all:[sig, before] script when invalidHereafter is provided', () => {
+    createNativeScript('addr1', { invalidHereafter: 2000 });
 
     expect(mockedSerialize).toHaveBeenCalledWith(
-      expect.objectContaining({
-        scripts: expect.arrayContaining([{ type: 'after', slot: '1000' }]),
-      }),
+      {
+        type: 'all',
+        scripts: [
+          { type: 'sig', keyHash: 'hash_addr1' },
+          { type: 'before', slot: '2000' },
+        ],
+      },
       undefined,
       0,
     );
   });
 
-  it('adds invalidHereafter time-lock', () => {
-    createNativeScript('addr1', 0, 'all', null, 2000);
+  it('passes networkId through', () => {
+    createNativeScript('addr1', { networkId: 1 });
 
-    expect(mockedSerialize).toHaveBeenCalledWith(
-      expect.objectContaining({
-        scripts: expect.arrayContaining([{ type: 'before', slot: '2000' }]),
-      }),
-      undefined,
-      0,
-    );
+    expect(mockedSerialize).toHaveBeenCalledWith(expect.anything(), undefined, 1);
   });
 
   it('returns undefined scriptHash when scriptCbor is undefined', () => {

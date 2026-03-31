@@ -45,52 +45,41 @@ export function createMultisigAddress(
 /**
  * Create a native script policy for minting tokens.
  *
- * @param address1 - Address (bech32) whose key hash is the required signer.
- * @param networkId - `0` for testnet, `1` for mainnet.
- * @param scriptType - `"any"` or `"all"` when combined with time-lock scripts.
- * @param invalidBefore - Optional slot number before which the script is invalid.
- * @param invalidHereafter - Optional slot number after which the script is invalid.
+ * Without options, produces a bare `sig(keyHash)` script suitable for
+ * in-head voter tokens that must remain burnable by the admin.
+ *
+ * When `invalidHereafter` is provided, produces a compound time-bound
+ * script: `all: [sig(keyHash), before(slot)]` — each ballot gets its
+ * own time-bound policy.
+ *
+ * @param address - Address (bech32) whose key hash is the required signer.
+ * @param opts.invalidHereafter - Slot after which minting is no longer possible.
+ * @param opts.networkId - `0` for testnet (default), `1` for mainnet.
  * @returns The script address, serialized CBOR, and script hash.
  */
 export function createNativeScript(
-  address1: string,
-  networkId: number = 0,
-  scriptType: 'any' | 'all' = 'all',
-  invalidBefore: number | null = null,
-  invalidHereafter: number | null = null,
+  address: string,
+  opts?: { invalidHereafter?: number; networkId?: number },
 ): {
   address: string;
   scriptCbor?: string;
   scriptHash?: string;
 } {
-  const keyHash = deserializeAddress(address1).pubKeyHash;
+  const networkId = opts?.networkId ?? 0;
+  const keyHash = deserializeAddress(address).pubKeyHash;
 
-  const script: NativeScript = {
-    type: scriptType,
-    scripts: [
-      {
-        type: 'sig',
-        keyHash,
-      },
-    ],
-  };
+  const sigScript: NativeScript = { type: 'sig', keyHash };
 
-  if (invalidBefore) {
-    script.scripts.push({
-      type: 'after',
-      slot: invalidBefore.toString(),
-    });
-  }
+  const script: NativeScript =
+    opts?.invalidHereafter != null
+      ? {
+          type: 'all',
+          scripts: [sigScript, { type: 'before', slot: opts.invalidHereafter.toString() }],
+        }
+      : sigScript;
 
-  if (invalidHereafter) {
-    script.scripts.push({
-      type: 'before',
-      slot: invalidHereafter.toString(),
-    });
-  }
-
-  const { address, scriptCbor } = serializeNativeScript(script, undefined, networkId);
+  const { address: scriptAddress, scriptCbor } = serializeNativeScript(script, undefined, networkId);
   const scriptHash = scriptCbor != null ? resolveScriptHash(scriptCbor) : undefined;
 
-  return { address, scriptCbor, scriptHash };
+  return { address: scriptAddress, scriptCbor, scriptHash };
 }

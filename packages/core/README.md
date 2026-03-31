@@ -126,7 +126,7 @@ const chunks = chunkString("abcdef", 2); // ["ab", "cd", "ef"]
 |--------|-------------|
 | `getAdmin()` | Create a `MeshWallet` from env-configured signing key |
 | `createMultisigAddress(addr1, addr2, networkId?, scriptType?)` | Build a multisig address from two participant addresses |
-| `createNativeScript(addr, networkId?, scriptType?, invalidBefore?, invalidHereafter?)` | Build a native script address with optional time bounds |
+| `createNativeScript(addr, opts?)` | Build a native script policy — bare `sig` by default, or time-bound `all:[sig, before]` when `opts.invalidHereafter` is set |
 | `getUtxoSet()` | Fetch all UTxOs in the Hydra Head |
 | `queryUtxoByAddress(address)` | Fetch UTxOs for a specific address |
 | `submitTx(endpoint, payload, id)` | Submit a signed transaction to the Hydra node |
