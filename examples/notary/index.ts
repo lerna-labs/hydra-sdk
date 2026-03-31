@@ -1,12 +1,12 @@
 import './load.js';
 
-import { getAdmin, optionalEnv, requireEnv, submitTx, Wrangler } from '@lerna-labs/hydra-sdk';
+import { optionalEnv, requireEnv, Wrangler } from '@lerna-labs/hydra-sdk';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import express from 'express';
 
-import { cacheEntry, getAllEntries, getDocumentsDir, getEntry, type NotaryEntry, rehydrateCache } from './cache.js';
-import { pinDirectory, pinJson } from './ipfs.js';
+import { cache, type NotaryEntry } from './cache.js';
+import { ipfs } from './ipfs.js';
 import { authHeaderMiddleware } from './middleware.js';
 
 // ── Mutex (same pattern as local-currency) ──────────────────────────
@@ -106,11 +106,11 @@ app.post('/notarize', async (req, res) => {
       timestamp,
     };
 
-    await cacheEntry(entry, payload);
+    await cache.put(entry, diskFilename, payload);
 
     let ipfsCid: string;
     try {
-      const pinResult = await pinJson(diskFilename, payload);
+      const pinResult = await ipfs.pinJson(diskFilename, payload);
       ipfsCid = pinResult.cid;
       entry.ipfsCid = ipfsCid;
     } catch (err: any) {
@@ -138,7 +138,7 @@ app.post('/notarize', async (req, res) => {
     console.log(`  Submitter: ${submitter}`);
 
     // 6. Update cache with final state
-    await cacheEntry(entry, payload);
+    await cache.put(entry, diskFilename, payload);
 
     // 7. Return result
     return res.json({
@@ -166,7 +166,7 @@ app.post('/notarize', async (req, res) => {
  * Look up the most recent notarisation for a given document hash.
  */
 app.get('/document/:docHash', (req, res) => {
-  const entry = getEntry(req.params.docHash);
+  const entry = cache.get(req.params.docHash);
   if (!entry) {
     return res.status(404).json({ status: 'ERROR', message: 'Document not found' });
   }
@@ -179,7 +179,7 @@ app.get('/document/:docHash', (req, res) => {
  * List all notarised documents in the cache.
  */
 app.get('/documents', (_, res) => {
-  return res.json({ status: 'SUCCESS', data: getAllEntries() });
+  return res.json({ status: 'SUCCESS', data: cache.getAll() });
 });
 
 /**
@@ -191,7 +191,7 @@ app.get('/documents', (_, res) => {
  */
 app.post('/publish', async (_, res) => {
   try {
-    const result = await pinDirectory(getDocumentsDir());
+    const result = await ipfs.pinDirectory(cache.getDocumentsDir());
     console.log(`Published all documents to IPFS: ${result.cid}`);
     return res.json({
       status: 'SUCCESS',
@@ -212,7 +212,7 @@ app.post('/publish', async (_, res) => {
 // ── Boot ────────────────────────────────────────────────────────────
 
 async function boot() {
-  const count = await rehydrateCache();
+  const count = await cache.rehydrate();
   if (count > 0) {
     console.log(`Rehydrated ${count} entries from disk`);
   }
