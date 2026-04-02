@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { MeshWallet } from '@meshsdk/core';
+import { BlockfrostProvider, MeshWallet } from '@meshsdk/core';
 import { optionalEnv } from '../config.js';
 
 /**
@@ -8,10 +8,13 @@ import { optionalEnv } from '../config.js';
  * Reads the Cardano signing key from `HYDRA_ADMIN_KEY_FILE` (preferred)
  * or falls back to `HYDRA_ADMIN_CARDANO_PK`. Network is selected via `HYDRA_NETWORK`.
  *
+ * @param blockfrostProjectId - Optional Blockfrost project ID. When provided, the wallet
+ *   is configured with a Blockfrost fetcher and submitter for L1 operations (e.g. preparing
+ *   the Hydra head, querying UTxOs, submitting commit transactions).
  * @returns An initialized MeshWallet ready for signing transactions.
  * @throws If no signing key is available or the wallet fails to initialize.
  */
-export async function getAdmin(): Promise<MeshWallet> {
+export async function getAdmin(blockfrostProjectId?: string): Promise<MeshWallet> {
   let keyCborHex: string | null = null;
 
   // Preferred: read the instance's cardano.sk file directly (no secrets in .env)
@@ -40,13 +43,21 @@ export async function getAdmin(): Promise<MeshWallet> {
     networkId = 1;
   }
 
-  const wallet = new MeshWallet({
+  const walletOptions: ConstructorParameters<typeof MeshWallet>[0] = {
     networkId: networkId as 0 | 1,
     key: {
       type: 'cli',
       payment: keyCborHex,
     },
-  });
+  };
+
+  if (blockfrostProjectId) {
+    const blockfrost = new BlockfrostProvider(blockfrostProjectId);
+    walletOptions.fetcher = blockfrost;
+    walletOptions.submitter = blockfrost;
+  }
+
+  const wallet = new MeshWallet(walletOptions);
 
   await wallet.init();
 

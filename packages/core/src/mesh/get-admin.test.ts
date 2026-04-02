@@ -20,8 +20,20 @@ class MockMeshWallet {
   }
 }
 
+const mockBlockfrostInstance = { _mock: 'blockfrost' };
+const blockfrostCalls: unknown[] = [];
+
+// biome-ignore lint/correctness/noConstructorReturn: intentional mock — return object from constructor
+class MockBlockfrostProvider {
+  constructor(projectId: unknown) {
+    blockfrostCalls.push(projectId);
+    return mockBlockfrostInstance;
+  }
+}
+
 vi.mock('@meshsdk/core', () => ({
   MeshWallet: MockMeshWallet,
+  BlockfrostProvider: MockBlockfrostProvider,
 }));
 
 vi.mock('node:fs', () => ({
@@ -43,6 +55,7 @@ describe('getAdmin', () => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
     meshWalletCalls.length = 0;
+    blockfrostCalls.length = 0;
     mockWallet.init.mockResolvedValue(undefined);
     mockWallet.addresses.enterpriseAddressBech32 = 'addr_test1qz...';
   });
@@ -114,5 +127,29 @@ describe('getAdmin', () => {
     mockWallet.addresses.enterpriseAddressBech32 = '';
 
     await expect(getAdmin()).rejects.toThrow('Wallet failed to initialize!');
+  });
+
+  it('creates wallet without fetcher/submitter when no blockfrost ID is given', async () => {
+    vi.stubEnv('HYDRA_ADMIN_CARDANO_PK', '5820aabb');
+
+    await getAdmin();
+
+    expect(blockfrostCalls).toHaveLength(0);
+    expect(meshWalletCalls[0]).not.toHaveProperty('fetcher');
+    expect(meshWalletCalls[0]).not.toHaveProperty('submitter');
+  });
+
+  it('configures wallet with Blockfrost fetcher and submitter when project ID is provided', async () => {
+    vi.stubEnv('HYDRA_ADMIN_CARDANO_PK', '5820aabb');
+
+    await getAdmin('preprodXYZ123');
+
+    expect(blockfrostCalls).toEqual(['preprodXYZ123']);
+    expect(meshWalletCalls[0]).toEqual(
+      expect.objectContaining({
+        fetcher: mockBlockfrostInstance,
+        submitter: mockBlockfrostInstance,
+      }),
+    );
   });
 });
