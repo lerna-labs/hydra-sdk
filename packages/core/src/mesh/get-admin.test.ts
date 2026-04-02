@@ -23,10 +23,10 @@ class MockMeshWallet {
 const mockBlockfrostInstance = { _mock: 'blockfrost' };
 const blockfrostCalls: unknown[] = [];
 
-// biome-ignore lint/correctness/noConstructorReturn: intentional mock — return object from constructor
 class MockBlockfrostProvider {
   constructor(projectId: unknown) {
     blockfrostCalls.push(projectId);
+    // biome-ignore lint/correctness/noConstructorReturn: intentional mock — return object from constructor
     return mockBlockfrostInstance;
   }
 }

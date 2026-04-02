@@ -33,6 +33,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(authHeaderMiddleware);
 
 const port = optionalEnv('EXPRESS_PORT', '3000');
+// biome-ignore lint/correctness/noUnusedVariables: fail-fast validation that TRP_URL is set at startup
 const TRP_URL = requireEnv('TRP_URL');
 
 // ── Routes ──────────────────────────────────────────────────────────
