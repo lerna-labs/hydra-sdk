@@ -69,10 +69,12 @@ services:
       - NETWORK=${NETWORK}
       - NODE_ENV=development
       - HYDRA_ADMIN_KEY_FILE=/${NETWORK}/keys/${NODE_ID}.cardano.sk
+      - IPFS_STAGING_DIR=/ipfs-staging
     volumes:
       - ..:/usr/src/app:delegated
       - /usr/src/app/node_modules
       - "${DATA_DIR}/instances/${INSTANCE}/keys:/${NETWORK}/keys:ro"
+      - "${DATA_DIR}/instances/${INSTANCE}/ipfs-staging:/ipfs-staging"
     command: [ "npx", "tsx", "watch", "examples/local-currency/index.ts" ]
     networks:
       hydra-network:
