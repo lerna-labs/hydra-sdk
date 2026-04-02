@@ -74,6 +74,10 @@ CARDANO_COMPOSE := docker/docker-compose.cardano.yml
 CARDANO_PROJECT := cardano-$(NETWORK)
 DOCKER_CARDANO := docker compose -f $(CARDANO_COMPOSE) -p $(CARDANO_PROJECT)
 
+IPFS_COMPOSE := docker/docker-compose.ipfs.yml
+IPFS_PROJECT := ipfs
+DOCKER_IPFS := docker compose -f $(IPFS_COMPOSE) -p $(IPFS_PROJECT)
+
 HYDRA_COMPOSE := docker/docker-compose.$(NETWORK).yml
 HYDRA_PROJECT := hydra-$(NETWORK)-$(INSTANCE)
 DOCKER_HYDRA := docker compose -f $(HYDRA_COMPOSE) -p $(HYDRA_PROJECT)
@@ -81,13 +85,14 @@ DOCKER_HYDRA := docker compose -f $(HYDRA_COMPOSE) -p $(HYDRA_PROJECT)
 # List of make commands
 HYDRA_TARGETS := hydra-start hydra-stop hydra-down hydra-logs hydra-restart hydra-clean hydra-rebuild hydra-pull hydra-status hydra-stats
 CARDANO_TARGETS := cardano-start cardano-stop cardano-logs
+IPFS_TARGETS := ipfs-start ipfs-stop ipfs-down ipfs-logs ipfs-status
 UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert
 UTILITY_TARGETS += check-tls-cert _guard-network _guard-instance _abort-if-exists _check-key-exists _prepare-directories
 UTILITY_TARGETS += gen-instance-env reset-instance-counter create-instance extract-cardano-privkey append-admin-pk _assert-middleware
 UTILITY_TARGETS += dolos-init dolos-logs
 UTILITY_TARGETS += test lint typecheck fmt check-releases validate-docker api-snapshot docs
 
-.PHONY: $(HYDRA_TARGETS) $(CARDANO_TARGETS) $(UTILITY_TARGETS)
+.PHONY: $(HYDRA_TARGETS) $(CARDANO_TARGETS) $(IPFS_TARGETS) $(UTILITY_TARGETS)
 
 _assert-middleware: _guard-network _guard-instance
 	@set -a; . .$(NETWORK).$(INSTANCE).env; set +a; \
@@ -132,6 +137,22 @@ cardano-stop: _guard-network
 
 cardano-logs: _guard-network
 	$(DOCKER_CARDANO) logs cardano-node -ft --tail=50 | grep -Ev "TrInbound|TrPromoted" || true
+
+ipfs-start:
+	@mkdir -p data/ipfs/data data/ipfs/staging
+	$(DOCKER_IPFS) up -d
+
+ipfs-stop:
+	$(DOCKER_IPFS) stop
+
+ipfs-down:
+	$(DOCKER_IPFS) down
+
+ipfs-logs:
+	$(DOCKER_IPFS) logs -ft --tail=50
+
+ipfs-status:
+	$(DOCKER_IPFS) ps
 
 hydra-start: _assert-middleware _prepare-directories check-hydra-keys check-cardano-keys check-tls-cert gen-trp-config
 	$(DOCKER_HYDRA) up -d
@@ -360,6 +381,13 @@ help:
 	@echo "  cardano-logs             Tail Cardano node logs"
 	@echo "  dolos-logs               Tail Dolos logs"
 	@echo "  dolos-init               Bootstrap Dolos genesis files (one-time)"
+	@echo ""
+	@echo "── IPFS (shared, network-independent) ───────────────────────"
+	@echo "  ipfs-start               Start shared IPFS node"
+	@echo "  ipfs-stop                Stop IPFS node"
+	@echo "  ipfs-down                Stop and remove IPFS container"
+	@echo "  ipfs-logs                Tail IPFS node logs"
+	@echo "  ipfs-status              Show IPFS container status"
 	@echo ""
 	@echo "── Hydra Instance ──────────────────────────────────────────"
 	@echo "  hydra-start              Start hydra-node + TRP + express-api"

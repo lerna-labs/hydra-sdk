@@ -78,9 +78,12 @@ services:
     command: [ "npx", "tsx", "watch", "examples/local-currency/index.ts" ]
     networks:
       hydra-network:
+      ipfs-network:
     restart: unless-stopped
 
 networks:
   hydra-network:
     name: hydra-network-${NETWORK}
     driver: bridge
+  ipfs-network:
+    external: true

@@ -64,7 +64,10 @@ services:
       - "${EXPRESS_PORT}:3000"
     networks:
       hydra-network:
+      ipfs-network:
 networks:
   hydra-network:
     name: hydra-network-${NETWORK}
     driver: bridge
+  ipfs-network:
+    external: true
