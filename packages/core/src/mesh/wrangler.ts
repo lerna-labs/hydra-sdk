@@ -108,17 +108,24 @@ export class Wrangler {
         fn(value);
       };
 
-      this.provider.onMessage((message) => {
-        handler(
-          message,
-          (value) => settle(resolve, value),
-          (reason) => settle(reject, reason),
-        );
-      });
-
       const timer = setTimeout(() => settle(reject, new Error(timeoutMessage)), timeoutMs);
 
-      this.connectWithRetry().catch((err) => settle(reject, new Error(`Failed to connect: ${String(err)}`)));
+      // Connect first, then register the message handler. HydraProvider.isConnected()
+      // internally calls onMessage() (single-callback replacement), which would overwrite
+      // any handler set beforehand. By connecting first, isConnected() consumes the
+      // Greetings message via its own handler. Once connected, we register our handler —
+      // onMessage() replays the _messageQueue, so the Greetings is re-delivered to us.
+      this.connectWithRetry()
+        .then(() => {
+          this.provider.onMessage((message) => {
+            handler(
+              message,
+              (value) => settle(resolve, value),
+              (reason) => settle(reject, reason),
+            );
+          });
+        })
+        .catch((err) => settle(reject, new Error(`Failed to connect: ${String(err)}`)));
     });
   }
 
@@ -145,15 +152,15 @@ export class Wrangler {
   /** Begin the head-opening sequence: init, commit, and listen for state changes. */
   public async startHead(commitArgs: CommitArgs) {
     this.mode = 'start';
-    this.provider.onMessage((msg) => this.handleIncoming(msg, commitArgs));
     await this.connectWithRetry();
+    this.provider.onMessage((msg) => this.handleIncoming(msg, commitArgs));
   }
 
   /** Begin the head-closing sequence: close, fanout, and finalize. */
   public async shutdownHead() {
     this.mode = 'shutdown';
-    this.provider.onMessage((msg) => this.handleIncoming(msg));
     await this.connectWithRetry();
+    this.provider.onMessage((msg) => this.handleIncoming(msg));
   }
 
   /**
