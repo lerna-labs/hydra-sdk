@@ -24,7 +24,7 @@ if (!url) {
 const ts = () => new Date().toISOString();
 
 console.log(`[${ts()}] Connecting to: ${url}`);
-console.log(`[${ts()}] ws version: ${require('ws/package.json').version}`);
+console.log(`[${ts()}] ws version: (see package.json)`);
 console.log(`[${ts()}] Node version: ${process.version}`);
 console.log('---');
 
