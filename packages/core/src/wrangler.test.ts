@@ -1,44 +1,54 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HeadStatus, HydraWsMessage } from '../hydra/messages.js';
+import type { HeadStatus, HydraWsMessage } from './hydra/types.js';
 
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before the dynamic import of the module under test
 // ---------------------------------------------------------------------------
 
-const mockProvider = {
-  isConnected: vi.fn<() => Promise<boolean>>(),
+// Registered 'message' listeners (EventEmitter pattern)
+const messageListeners: ((msg: HydraWsMessage) => void)[] = [];
+
+const mockWs = {
+  waitForGreetings: vi.fn<() => Promise<boolean>>(),
   connect: vi.fn<() => Promise<void>>(),
   disconnect: vi.fn<() => Promise<void>>(),
-  onMessage: vi.fn<(cb: (msg: HydraWsMessage) => void) => void>(),
-  onStatusChange: vi.fn(),
+  send: vi.fn(),
   getStatus: vi.fn(),
-  init: vi.fn<() => Promise<void>>(),
-  close: vi.fn<() => Promise<unknown>>(),
-  fanout: vi.fn<() => Promise<unknown>>(),
-  publishDecommit: vi.fn<(payload: unknown) => Promise<unknown>>(),
+  onStatusChange: vi.fn(),
+  on: vi.fn((event: string, cb: (msg: HydraWsMessage) => void) => {
+    if (event === 'message') messageListeners.push(cb);
+    return mockWs;
+  }),
+  removeListener: vi.fn((event: string, cb: (msg: HydraWsMessage) => void) => {
+    if (event === 'message') {
+      const idx = messageListeners.indexOf(cb);
+      if (idx >= 0) messageListeners.splice(idx, 1);
+    }
+    return mockWs;
+  }),
 };
 
-const mockInstance = {
-  commitBlueprintUTxOs:
-    vi.fn<(txIn: { txHash: string; outputIndex: number }[], transaction: unknown) => Promise<string>>(),
-  commitEmpty: vi.fn<() => Promise<string>>(),
-  commitFunds: vi.fn<(txHash: string, outputIndex: number) => Promise<string>>(),
-  incrementalCommitFunds: vi.fn<(txHash: string, outputIndex: number) => Promise<string>>(),
-  incrementalBlueprintCommit: vi.fn<(txHash: string, outputIndex: number, transaction: unknown) => Promise<string>>(),
+const mockHttp = {
+  buildCommit: vi.fn<(payload: unknown) => Promise<string>>(),
+  publishDecommit: vi.fn<(payload: unknown) => Promise<unknown>>(),
 };
 
 const mockBlockfrost = {
   submitTx: vi.fn<(tx: string) => Promise<string>>(),
+  fetchUTxOs: vi.fn(),
 };
 
-vi.mock('@meshsdk/hydra', () => ({
+vi.mock('./hydra/hydra-websocket.js', () => ({
   // biome-ignore lint/complexity/useArrowFunction: must be constructable with `new`
-  HydraProvider: function () {
-    return mockProvider;
+  HydraWebSocket: function () {
+    return mockWs;
   },
+}));
+
+vi.mock('./hydra/hydra-http-client.js', () => ({
   // biome-ignore lint/complexity/useArrowFunction: must be constructable with `new`
-  HydraInstance: function () {
-    return mockInstance;
+  HydraHttpClient: function () {
+    return mockHttp;
   },
 }));
 
@@ -47,6 +57,29 @@ vi.mock('@meshsdk/core', () => ({
   BlockfrostProvider: function () {
     return mockBlockfrost;
   },
+}));
+
+vi.mock('./hydra/utxo-conversion.js', () => ({
+  toHydraUTxO: vi.fn(() => ({
+    address: 'addr_test1',
+    datum: null,
+    inlineDatum: null,
+    inlineDatumRaw: null,
+    inlineDatumhash: null,
+    referenceScript: null,
+    value: { lovelace: 5000000 },
+  })),
+  toHydraUTxOs: vi.fn(() => ({
+    'abc123#0': {
+      address: 'addr_test1',
+      datum: null,
+      inlineDatum: null,
+      inlineDatumRaw: null,
+      inlineDatumhash: null,
+      referenceScript: null,
+      value: { lovelace: 5000000 },
+    },
+  })),
 }));
 
 // Stub env vars before the module is loaded
@@ -60,14 +93,14 @@ const { Wrangler } = await import('./wrangler.js');
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Simulate the provider emitting a message to the last registered handler. */
+/** Simulate the WebSocket emitting a message to all registered handlers. */
 function emitMessage(msg: Partial<HydraWsMessage> & { tag: string }) {
-  const lastCall = mockProvider.onMessage.mock.calls.at(-1);
-  if (!lastCall) throw new Error('No onMessage handler registered');
-  lastCall[0](msg as HydraWsMessage);
+  for (const listener of [...messageListeners]) {
+    listener(msg as HydraWsMessage);
+  }
 }
 
-/** Flush microtasks + one timer tick so connectWithRetry's setTimeout fires. */
+/** Flush microtasks + one timer tick. */
 async function flushAsync() {
   await vi.advanceTimersByTimeAsync(0);
 }
@@ -82,22 +115,22 @@ describe('Wrangler', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    messageListeners.length = 0;
 
     // Default: connection succeeds immediately
-    mockProvider.isConnected.mockResolvedValue(true);
-    mockProvider.disconnect.mockResolvedValue(undefined);
-    mockProvider.init.mockResolvedValue(undefined);
-    mockProvider.close.mockResolvedValue(undefined);
-    mockProvider.fanout.mockResolvedValue(undefined);
-    mockProvider.getStatus.mockReturnValue('idle');
-    mockProvider.onStatusChange.mockReturnValue('idle');
-    mockInstance.commitBlueprintUTxOs.mockResolvedValue('raw-tx-hex');
-    mockInstance.commitEmpty.mockResolvedValue('raw-tx-hex');
-    mockInstance.commitFunds.mockResolvedValue('raw-tx-hex');
-    mockInstance.incrementalCommitFunds.mockResolvedValue('raw-tx-hex');
-    mockInstance.incrementalBlueprintCommit.mockResolvedValue('raw-tx-hex');
+    mockWs.waitForGreetings.mockResolvedValue(true);
+    mockWs.disconnect.mockResolvedValue(undefined);
+    mockWs.getStatus.mockReturnValue('IDLE');
+    mockWs.onStatusChange.mockReturnValue('IDLE');
+    mockHttp.buildCommit.mockResolvedValue('raw-tx-hex');
+    mockHttp.publishDecommit.mockResolvedValue(undefined);
     mockBlockfrost.submitTx.mockResolvedValue('tx-hash');
-    mockProvider.publishDecommit.mockResolvedValue(undefined);
+    mockBlockfrost.fetchUTxOs.mockResolvedValue([
+      {
+        input: { txHash: 'abc123', outputIndex: 0 },
+        output: { address: 'addr_test1', amount: [{ unit: 'lovelace', quantity: '5000000' }] },
+      },
+    ]);
 
     wrangler = new Wrangler('http://localhost:4001');
   });
@@ -111,13 +144,13 @@ describe('Wrangler', () => {
   // -------------------------------------------------------------------------
 
   describe('connect()', () => {
-    it('resolves when isConnected returns true', async () => {
+    it('resolves when waitForGreetings returns true', async () => {
       await expect(wrangler.connect()).resolves.toBeUndefined();
-      expect(mockProvider.isConnected).toHaveBeenCalledOnce();
+      expect(mockWs.waitForGreetings).toHaveBeenCalledOnce();
     });
 
     it('retries on failure with exponential backoff', async () => {
-      mockProvider.isConnected
+      mockWs.waitForGreetings
         .mockRejectedValueOnce(new Error('refused'))
         .mockRejectedValueOnce(new Error('refused'))
         .mockResolvedValueOnce(true);
@@ -130,17 +163,14 @@ describe('Wrangler', () => {
       await vi.advanceTimersByTimeAsync(2000);
 
       await expect(p).resolves.toBeUndefined();
-      expect(mockProvider.isConnected).toHaveBeenCalledTimes(3);
+      expect(mockWs.waitForGreetings).toHaveBeenCalledTimes(3);
     });
 
     it('rejects after max attempts exhausted', async () => {
-      mockProvider.isConnected.mockRejectedValue(new Error('refused'));
+      mockWs.waitForGreetings.mockRejectedValue(new Error('refused'));
 
-      // Attach a no-op catch immediately so the rejection is "handled"
-      // before fake-timer advancement creates the async gap
       const p = wrangler.connect().catch((e) => e);
 
-      // Advance through all 4 retry delays (attempts 0-3 fail then delay, attempt 4 fails and throws)
       for (let i = 0; i < 4; i++) {
         await vi.advanceTimersByTimeAsync(30_000);
       }
@@ -150,14 +180,14 @@ describe('Wrangler', () => {
       expect((err as Error).message).toMatch('Failed to connect after 5 attempts');
     });
 
-    it('retries when isConnected returns false', async () => {
-      mockProvider.isConnected.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    it('retries when waitForGreetings returns false', async () => {
+      mockWs.waitForGreetings.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
 
       const p = wrangler.connect();
       await vi.advanceTimersByTimeAsync(1000);
 
       await expect(p).resolves.toBeUndefined();
-      expect(mockProvider.isConnected).toHaveBeenCalledTimes(2);
+      expect(mockWs.waitForGreetings).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -166,24 +196,24 @@ describe('Wrangler', () => {
   // -------------------------------------------------------------------------
 
   describe('disconnect()', () => {
-    it('delegates to provider.disconnect', async () => {
+    it('delegates to ws.disconnect', async () => {
       await wrangler.disconnect(5000);
-      expect(mockProvider.disconnect).toHaveBeenCalledWith(5000);
+      expect(mockWs.disconnect).toHaveBeenCalledWith(5000);
     });
   });
 
   describe('getStatus()', () => {
-    it('delegates to provider.getStatus', () => {
-      mockProvider.getStatus.mockReturnValue('connected');
-      expect(wrangler.getStatus()).toBe('connected');
+    it('delegates to ws.getStatus', () => {
+      mockWs.getStatus.mockReturnValue('OPEN');
+      expect(wrangler.getStatus()).toBe('OPEN');
     });
   });
 
   describe('onStatusChange()', () => {
-    it('delegates to provider.onStatusChange', () => {
+    it('delegates to ws.onStatusChange', () => {
       const cb = vi.fn();
       wrangler.onStatusChange(cb);
-      expect(mockProvider.onStatusChange).toHaveBeenCalledWith(cb);
+      expect(mockWs.onStatusChange).toHaveBeenCalledWith(cb);
     });
   });
 
@@ -221,13 +251,10 @@ describe('Wrangler', () => {
     });
 
     it('rejects when connection fails', async () => {
-      mockProvider.isConnected.mockRejectedValue(new Error('refused'));
+      mockWs.waitForGreetings.mockRejectedValue(new Error('refused'));
 
-      // Use a large timeout so the connection failure fires before the timeout.
-      // Attach a no-op catch to prevent unhandled-rejection during timer advancement.
       const p = wrangler.getHeadStatus(600_000).catch((e) => e);
 
-      // Advance through all retry delays (1s + 2s + 4s + 8s = 15s for 5 attempts)
       for (let i = 0; i < 5; i++) {
         await vi.advanceTimersByTimeAsync(30_000);
       }
@@ -260,16 +287,11 @@ describe('Wrangler', () => {
       await flushAsync();
 
       emitMessage({ tag: 'HeadIsInitializing' });
-      // Allow the commit chain to resolve
       await flushAsync();
 
-      expect(mockInstance.commitBlueprintUTxOs).toHaveBeenCalledWith(
-        [{ txHash: 'abc123', outputIndex: 0 }],
-        blueprintTx,
-      );
+      expect(mockHttp.buildCommit).toHaveBeenCalled();
       expect(mockBlockfrost.submitTx).toHaveBeenCalledWith('raw-tx-hex');
 
-      // Now resolve by opening
       emitMessage({ tag: 'HeadIsOpen' });
       await expect(p).resolves.toBeUndefined();
     });
@@ -281,7 +303,7 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'Greetings', headStatus: 'Idle' as HeadStatus });
       await flushAsync();
 
-      expect(mockProvider.init).toHaveBeenCalledOnce();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Init' });
 
       emitMessage({ tag: 'HeadIsOpen' });
       await expect(p).resolves.toBeUndefined();
@@ -294,10 +316,7 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'Greetings', headStatus: 'Initializing' as HeadStatus });
       await flushAsync();
 
-      expect(mockInstance.commitBlueprintUTxOs).toHaveBeenCalledWith(
-        [{ txHash: 'abc123', outputIndex: 0 }],
-        blueprintTx,
-      );
+      expect(mockHttp.buildCommit).toHaveBeenCalled();
 
       emitMessage({ tag: 'HeadIsOpen' });
       await expect(p).resolves.toBeUndefined();
@@ -353,7 +372,7 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'ReadyToFanout' });
       await flushAsync();
 
-      expect(mockProvider.fanout).toHaveBeenCalledOnce();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Fanout' });
 
       emitMessage({ tag: 'HeadIsFinalized' });
       await expect(p).resolves.toBeUndefined();
@@ -366,7 +385,7 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'Greetings', headStatus: 'Open' as HeadStatus });
       await flushAsync();
 
-      expect(mockProvider.close).toHaveBeenCalledOnce();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Close' });
 
       emitMessage({ tag: 'HeadIsFinalized' });
       await expect(p).resolves.toBeUndefined();
@@ -379,7 +398,7 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'Greetings', headStatus: 'FanoutPossible' as HeadStatus });
       await flushAsync();
 
-      expect(mockProvider.fanout).toHaveBeenCalledOnce();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Fanout' });
 
       emitMessage({ tag: 'HeadIsFinalized' });
       await expect(p).resolves.toBeUndefined();
@@ -405,8 +424,8 @@ describe('Wrangler', () => {
     it('sets mode to start, registers handler, and connects', async () => {
       await wrangler.startHead({ utxos: [{ txHash: 'tx1', outputIndex: 0 }], blueprintTx: startBlueprintTx });
 
-      expect(mockProvider.onMessage).toHaveBeenCalled();
-      expect(mockProvider.isConnected).toHaveBeenCalled();
+      expect(mockWs.on).toHaveBeenCalledWith('message', expect.any(Function));
+      expect(mockWs.waitForGreetings).toHaveBeenCalled();
     });
 
     it('handler commits on HeadIsInitializing', async () => {
@@ -415,10 +434,7 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'HeadIsInitializing' });
       await flushAsync();
 
-      expect(mockInstance.commitBlueprintUTxOs).toHaveBeenCalledWith(
-        [{ txHash: 'tx1', outputIndex: 2 }],
-        startBlueprintTx,
-      );
+      expect(mockHttp.buildCommit).toHaveBeenCalled();
     });
 
     it('handler calls init on Greetings Idle', async () => {
@@ -427,7 +443,7 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'Greetings', headStatus: 'Idle' as HeadStatus });
       await flushAsync();
 
-      expect(mockProvider.init).toHaveBeenCalledOnce();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Init' });
     });
   });
 
@@ -435,8 +451,8 @@ describe('Wrangler', () => {
     it('sets mode to shutdown, registers handler, and connects', async () => {
       await wrangler.shutdownHead();
 
-      expect(mockProvider.onMessage).toHaveBeenCalled();
-      expect(mockProvider.isConnected).toHaveBeenCalled();
+      expect(mockWs.on).toHaveBeenCalledWith('message', expect.any(Function));
+      expect(mockWs.waitForGreetings).toHaveBeenCalled();
     });
 
     it('handler calls fanout on ReadyToFanout', async () => {
@@ -445,7 +461,7 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'ReadyToFanout' });
       await flushAsync();
 
-      expect(mockProvider.fanout).toHaveBeenCalledOnce();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Fanout' });
     });
 
     it('handler calls close on Greetings Open', async () => {
@@ -454,7 +470,7 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'Greetings', headStatus: 'Open' as HeadStatus });
       await flushAsync();
 
-      expect(mockProvider.close).toHaveBeenCalledOnce();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Close' });
     });
   });
 
@@ -463,29 +479,28 @@ describe('Wrangler', () => {
   // -------------------------------------------------------------------------
 
   describe('doCommit() branching', () => {
-    it('calls commitEmpty when utxos is empty and no blueprintTx', async () => {
+    it('calls buildCommit with empty object when utxos is empty and no blueprintTx', async () => {
       const p = wrangler.waitForHeadOpen({ utxos: [] }, 10000);
       await flushAsync();
 
       emitMessage({ tag: 'HeadIsInitializing' });
       await flushAsync();
 
-      expect(mockInstance.commitEmpty).toHaveBeenCalledOnce();
-      expect(mockInstance.commitBlueprintUTxOs).not.toHaveBeenCalled();
+      expect(mockHttp.buildCommit).toHaveBeenCalledWith({});
 
       emitMessage({ tag: 'HeadIsOpen' });
       await expect(p).resolves.toBeUndefined();
     });
 
-    it('calls commitFunds for single UTxO without blueprintTx', async () => {
+    it('calls buildCommit for single UTxO without blueprintTx', async () => {
       const p = wrangler.waitForHeadOpen({ utxos: [{ txHash: 'abc123', outputIndex: 0 }] }, 10000);
       await flushAsync();
 
       emitMessage({ tag: 'HeadIsInitializing' });
       await flushAsync();
 
-      expect(mockInstance.commitFunds).toHaveBeenCalledWith('abc123', 0);
-      expect(mockInstance.commitBlueprintUTxOs).not.toHaveBeenCalled();
+      expect(mockBlockfrost.fetchUTxOs).toHaveBeenCalledWith('abc123', 0);
+      expect(mockHttp.buildCommit).toHaveBeenCalled();
 
       emitMessage({ tag: 'HeadIsOpen' });
       await expect(p).resolves.toBeUndefined();
@@ -509,7 +524,7 @@ describe('Wrangler', () => {
       expect((err as Error).message).toMatch('Multiple UTxOs without a blueprintTx');
     });
 
-    it('calls commitBlueprintUTxOs when blueprintTx is provided', async () => {
+    it('calls buildCommit with blueprint when blueprintTx is provided', async () => {
       const blueprintTx = { type: 'Tx ConwayEra' as const, cborHex: 'deadbeef', description: '' };
       const commitArgs = { utxos: [{ txHash: 'abc123', outputIndex: 0 }], blueprintTx };
       const p = wrangler.waitForHeadOpen(commitArgs, 10000);
@@ -518,10 +533,7 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'HeadIsInitializing' });
       await flushAsync();
 
-      expect(mockInstance.commitBlueprintUTxOs).toHaveBeenCalledWith(
-        [{ txHash: 'abc123', outputIndex: 0 }],
-        blueprintTx,
-      );
+      expect(mockHttp.buildCommit).toHaveBeenCalledWith(expect.objectContaining({ blueprintTx }));
 
       emitMessage({ tag: 'HeadIsOpen' });
       await expect(p).resolves.toBeUndefined();
@@ -536,9 +548,12 @@ describe('Wrangler', () => {
     const decommitTx = { type: 'Tx ConwayEra' as const, cborHex: 'decommitcbor', description: '' };
 
     it('resolves on DecommitApproved', async () => {
-      mockProvider.onMessage.mockImplementationOnce((cb) => {
-        // getHeadStatus registers handler, we immediately emit Greetings
-        setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+      // First onMessage call is getHeadStatus — simulate Greetings
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+        return mockWs;
       });
 
       const p = wrangler.decommit(decommitTx, 10000);
@@ -548,12 +563,15 @@ describe('Wrangler', () => {
       emitMessage({ tag: 'DecommitApproved' });
 
       await expect(p).resolves.toBeUndefined();
-      expect(mockProvider.publishDecommit).toHaveBeenCalledWith(decommitTx);
+      expect(mockHttp.publishDecommit).toHaveBeenCalledWith(decommitTx);
     });
 
     it('rejects on DecommitInvalid', async () => {
-      mockProvider.onMessage.mockImplementationOnce((cb) => {
-        setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+        return mockWs;
       });
 
       const p = wrangler.decommit(decommitTx, 10000);
@@ -572,8 +590,11 @@ describe('Wrangler', () => {
     });
 
     it('rejects when head is not Open', async () => {
-      mockProvider.onMessage.mockImplementationOnce((cb) => {
-        setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Idle' } as HydraWsMessage), 0);
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Idle' } as HydraWsMessage), 0);
+        return mockWs;
       });
 
       const p = wrangler.decommit(decommitTx, 10000).catch((e) => e);
@@ -585,14 +606,16 @@ describe('Wrangler', () => {
     });
 
     it('rejects on timeout', async () => {
-      mockProvider.onMessage.mockImplementationOnce((cb) => {
-        setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+        return mockWs;
       });
 
       const p = wrangler.decommit(decommitTx, 3000);
       await flushAsync();
 
-      // Advance past timeout without sending DecommitApproved
       vi.advanceTimersByTime(3000);
 
       await expect(p).rejects.toThrow('Timeout waiting for decommit approval');
@@ -607,30 +630,37 @@ describe('Wrangler', () => {
     const singleUtxo = { utxos: [{ txHash: 'inc123', outputIndex: 0 }] };
 
     it('resolves on CommitFinalized (simple funds)', async () => {
-      mockProvider.onMessage.mockImplementationOnce((cb) => {
-        setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+        return mockWs;
       });
 
       const p = wrangler.incrementalCommit(singleUtxo, 10000);
       await flushAsync();
 
-      expect(mockInstance.incrementalCommitFunds).toHaveBeenCalledWith('inc123', 0);
+      expect(mockBlockfrost.fetchUTxOs).toHaveBeenCalledWith('inc123', 0);
+      expect(mockHttp.buildCommit).toHaveBeenCalled();
 
       emitMessage({ tag: 'CommitFinalized' });
 
       await expect(p).resolves.toBeUndefined();
     });
 
-    it('uses incrementalBlueprintCommit when blueprintTx provided', async () => {
+    it('uses blueprint in buildCommit when blueprintTx provided', async () => {
       const blueprintTx = { type: 'Tx ConwayEra' as const, cborHex: 'bpcbor', description: '' };
-      mockProvider.onMessage.mockImplementationOnce((cb) => {
-        setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+        return mockWs;
       });
 
       const p = wrangler.incrementalCommit({ ...singleUtxo, blueprintTx }, 10000);
       await flushAsync();
 
-      expect(mockInstance.incrementalBlueprintCommit).toHaveBeenCalledWith('inc123', 0, blueprintTx);
+      expect(mockHttp.buildCommit).toHaveBeenCalledWith(expect.objectContaining({ blueprintTx }));
 
       emitMessage({ tag: 'CommitFinalized' });
 
@@ -638,8 +668,11 @@ describe('Wrangler', () => {
     });
 
     it('rejects when head is not Open', async () => {
-      mockProvider.onMessage.mockImplementationOnce((cb) => {
-        setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Idle' } as HydraWsMessage), 0);
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Idle' } as HydraWsMessage), 0);
+        return mockWs;
       });
 
       const p = wrangler.incrementalCommit(singleUtxo, 10000).catch((e) => e);
@@ -651,8 +684,11 @@ describe('Wrangler', () => {
     });
 
     it('rejects when utxos.length !== 1', async () => {
-      mockProvider.onMessage.mockImplementationOnce((cb) => {
-        setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+        return mockWs;
       });
 
       const p = wrangler
@@ -674,8 +710,11 @@ describe('Wrangler', () => {
     });
 
     it('rejects on timeout', async () => {
-      mockProvider.onMessage.mockImplementationOnce((cb) => {
-        setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: 'Open' } as HydraWsMessage), 0);
+        return mockWs;
       });
 
       const p = wrangler.incrementalCommit(singleUtxo, 3000);

@@ -3,7 +3,7 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.local.env' });
 
 import { BlockfrostProvider, MeshTxBuilder, MeshWallet } from '@meshsdk/core';
-import { Wrangler } from './mesh/wrangler';
+import { Wrangler } from './wrangler.js';
 
 (async () => {
   const admin_wallet = new MeshWallet({

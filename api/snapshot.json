@@ -2,7 +2,7 @@
   "schema": "lerna-labs/api-snapshot@v1",
   "packages": {
     "@lerna-labs/hydra-sdk": {
-      "version": "1.0.0-beta.13",
+      "version": "1.0.0-beta.18",
       "exports": [
         {
           "name": "bufferToAscii",
@@ -25,6 +25,16 @@
           "signature": "any"
         },
         {
+          "name": "createDiskCache",
+          "kind": "function",
+          "signature": "<E extends object>(config: DiskCacheConfig, keyFn: (entry: E) => string) => { rehydrate: () => Promise<number>; put: (entry: E, filename: string, fullPayload: unknown) => Promise<string>; get: (key: string) => E | undefined; getAll: () => E[]; getDocumentsDir: () => string; }"
+        },
+        {
+          "name": "createIpfsClient",
+          "kind": "function",
+          "signature": "(config: IpfsConfig) => { pinJson: (filename: string, payload: unknown) => Promise<PinResult>; pinDirectory: (dirPath: string) => Promise<PinResult>; fetchJson: <T = unknown>(cid: string) => Promise<T>; }"
+        },
+        {
           "name": "createMultisigAddress",
           "kind": "function",
           "signature": "(address1: string, address2: string, networkId?: number, scriptType?: \"any\" | \"all\") => { address: string; scriptCbor?: string; scriptHash?: string; }"
@@ -32,12 +42,22 @@
         {
           "name": "createNativeScript",
           "kind": "function",
-          "signature": "(address1: string, networkId?: number, scriptType?: \"any\" | \"all\", invalidBefore?: number | null, invalidHereafter?: number | null) => { address: string; scriptCbor?: string; scriptHash?: string; }"
+          "signature": "(address: string, opts?: { invalidHereafter?: number; networkId?: number; }) => { address: string; scriptCbor?: string; scriptHash?: string; }"
+        },
+        {
+          "name": "DiskCache",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "DiskCacheConfig",
+          "kind": "interface",
+          "signature": "any"
         },
         {
           "name": "getAdmin",
           "kind": "function",
-          "signature": "() => Promise<MeshWallet>"
+          "signature": "(blockfrostProjectId?: string) => Promise<MeshWallet>"
         },
         {
           "name": "getUtxoSet",
@@ -55,8 +75,38 @@
           "signature": "any"
         },
         {
+          "name": "hydraStatus",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "HydraStatus",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "hydraTransaction",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "HydraTransaction",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
           "name": "HydraWsMessage",
           "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "IpfsClient",
+          "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "IpfsConfig",
+          "kind": "interface",
           "signature": "any"
         },
         {
@@ -66,6 +116,11 @@
         },
         {
           "name": "ParsedUtxo",
+          "kind": "interface",
+          "signature": "any"
+        },
+        {
+          "name": "PinResult",
           "kind": "interface",
           "signature": "any"
         },
@@ -112,7 +167,7 @@
             {
               "name": "decommit",
               "kind": "method",
-              "signature": "(transaction: hydraTransaction, timeoutMs?: number) => Promise<void>"
+              "signature": "(transaction: HydraTransaction, timeoutMs?: number) => Promise<void>"
             },
             {
               "name": "disconnect",
@@ -127,7 +182,12 @@
             {
               "name": "getStatus",
               "kind": "method",
-              "signature": "() => hydraStatus"
+              "signature": "() => HydraStatus"
+            },
+            {
+              "name": "http",
+              "kind": "property",
+              "signature": "HydraHttpClient"
             },
             {
               "name": "incrementalCommit",
@@ -137,12 +197,7 @@
             {
               "name": "onStatusChange",
               "kind": "method",
-              "signature": "(callback: (status: hydraStatus) => void) => hydraStatus"
-            },
-            {
-              "name": "provider",
-              "kind": "property",
-              "signature": "HydraProvider"
+              "signature": "(callback: (status: HydraStatus) => void) => HydraStatus"
             },
             {
               "name": "shutdownHead",
@@ -163,13 +218,18 @@
               "name": "waitForHeadOpen",
               "kind": "method",
               "signature": "(commitArgs: CommitArgs, timeoutMs?: number) => Promise<void>"
+            },
+            {
+              "name": "ws",
+              "kind": "property",
+              "signature": "HydraWebSocket"
             }
           ]
         }
       ]
     },
     "@lerna-labs/hydra-proof": {
-      "version": "1.0.0-beta.0",
+      "version": "1.0.0-beta.1",
       "exports": [
         {
           "name": "blake2b256",

@@ -1,8 +1,9 @@
 import { BlockfrostProvider } from '@meshsdk/core';
-import type { hydraStatus, hydraTransaction } from '@meshsdk/hydra';
-import { HydraInstance, HydraProvider } from '@meshsdk/hydra';
-import { requireEnv } from '../config.js';
-import type { HeadStatus, HydraWsMessage } from '../hydra/messages.js';
+import { requireEnv } from './config.js';
+import { HydraHttpClient } from './hydra/hydra-http-client.js';
+import { HydraWebSocket } from './hydra/hydra-websocket.js';
+import type { HeadStatus, HydraStatus, HydraTransaction, HydraWsMessage } from './hydra/types.js';
+import { toHydraUTxO, toHydraUTxOs } from './hydra/utxo-conversion.js';
 
 /** UTxO reference for committing funds into a Hydra head. */
 export interface UTxORef {
@@ -17,18 +18,18 @@ export interface CommitArgs {
   /** One or more UTxO references to commit. */
   utxos: UTxORef[];
   /** Blueprint transaction that spends the committed UTxOs (CBOR-encoded, unsigned). Optional — omit for simple ADA-only commits. */
-  blueprintTx?: hydraTransaction;
+  blueprintTx?: HydraTransaction;
 }
 
 /**
  * High-level controller for Hydra head lifecycle operations.
  *
- * Wraps `HydraProvider` and `HydraInstance` to provide a simplified API
+ * Wraps `HydraWebSocket` and `HydraHttpClient` to provide a simplified API
  * for initializing, opening, and closing a Hydra head.
  *
  * @example
  * ```ts
- * const wrangler = new Wrangler("http://localhost:4001");
+ * const wrangler = new Wrangler("http://localhost:4001", "ws://localhost:4001");
  * await wrangler.waitForHeadOpen({
  *   utxos: [{ txHash: "abc...", outputIndex: 0 }],
  *   blueprintTx: { type: "Tx ConwayEra", cborHex: "...", description: "" },
@@ -37,38 +38,23 @@ export interface CommitArgs {
  */
 export class Wrangler {
   private mode: 'start' | 'shutdown' | undefined;
-  public readonly provider: HydraProvider;
-  private instance: HydraInstance;
+  public readonly ws: HydraWebSocket;
+  public readonly http: HydraHttpClient;
   private readonly blockfrost: BlockfrostProvider;
-  private readonly url: string;
-  private readonly wsUrl: string;
 
   constructor(url?: string, wsUrl?: string) {
-    this.url = url || requireEnv('HYDRA_API_URL');
-    this.wsUrl = wsUrl || requireEnv('HYDRA_WS_URL');
+    const httpUrl = url || requireEnv('HYDRA_API_URL');
+    const socketUrl = wsUrl || requireEnv('HYDRA_WS_URL');
     this.blockfrost = new BlockfrostProvider(requireEnv('BLOCKFROST_API_KEY'));
-    this.provider = this.createHydraProvider();
-    this.instance = this.createHydraInstance();
-  }
-
-  private createHydraProvider() {
-    return new HydraProvider({ httpUrl: this.url, history: false });
-  }
-
-  private createHydraInstance() {
-    return new HydraInstance({
-      provider: this.provider,
-      fetcher: this.blockfrost,
-      submitter: this.provider,
-    });
+    this.ws = new HydraWebSocket(socketUrl);
+    this.http = new HydraHttpClient(httpUrl);
   }
 
   /**
    * Connect to the Hydra node with exponential-backoff retry.
    *
-   * Uses `HydraProvider.isConnected()` which establishes the WebSocket
-   * **and** waits for the Hydra `Greetings` handshake, unlike the raw
-   * `connect()` which only opens the socket.
+   * Uses `HydraWebSocket.waitForGreetings()` which establishes the WebSocket
+   * **and** waits for the Hydra `Greetings` handshake.
    *
    * @param maxAttempts - Maximum number of connection attempts (default 5).
    * @param baseDelayMs - Initial retry delay in milliseconds (default 1000). Doubles each attempt, capped at 30 s.
@@ -76,9 +62,9 @@ export class Wrangler {
   private async connectWithRetry(maxAttempts = 5, baseDelayMs = 1000): Promise<void> {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        const connected = await this.provider.isConnected();
+        const connected = await this.ws.waitForGreetings();
         if (connected) return;
-        throw new Error('isConnected() returned false');
+        throw new Error('waitForGreetings() returned false');
       } catch (err) {
         if (attempt === maxAttempts - 1) {
           throw new Error(`Failed to connect after ${maxAttempts} attempts: ${String(err)}`);
@@ -92,6 +78,9 @@ export class Wrangler {
   /**
    * Shared helper for promise-based methods that wait for a specific
    * Hydra message. Handles connection, timeout, and settlement in one place.
+   *
+   * Uses EventEmitter `on`/`removeListener` for multi-listener support,
+   * avoiding the single-callback overwrite bug in HydraProvider.
    */
   private awaitMessage<T>(
     handler: (message: HydraWsMessage, resolve: (value: T) => void, reject: (reason: Error) => void) => void,
@@ -105,62 +94,60 @@ export class Wrangler {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        this.ws.removeListener('message', onMsg);
         fn(value);
       };
 
       const timer = setTimeout(() => settle(reject, new Error(timeoutMessage)), timeoutMs);
 
-      // Connect first, then register the message handler. HydraProvider.isConnected()
-      // internally calls onMessage() (single-callback replacement), which would overwrite
-      // any handler set beforehand. By connecting first, isConnected() consumes the
-      // Greetings message via its own handler. Once connected, we register our handler —
-      // onMessage() replays the _messageQueue, so the Greetings is re-delivered to us.
+      const onMsg = (message: HydraWsMessage) => {
+        handler(
+          message,
+          (value) => settle(resolve, value),
+          (reason) => settle(reject, reason),
+        );
+      };
+
       this.connectWithRetry()
         .then(() => {
-          this.provider.onMessage((message) => {
-            handler(
-              message,
-              (value) => settle(resolve, value),
-              (reason) => settle(reject, reason),
-            );
-          });
+          this.ws.on('message', onMsg);
         })
         .catch((err) => settle(reject, new Error(`Failed to connect: ${String(err)}`)));
     });
   }
 
-  /** Connect the underlying HydraProvider WebSocket with retry logic. */
+  /** Connect the underlying WebSocket with retry logic. */
   public async connect() {
     return await this.connectWithRetry();
   }
 
-  /** Disconnect the underlying HydraProvider WebSocket. */
+  /** Disconnect the underlying WebSocket. */
   public async disconnect(timeout?: number): Promise<void> {
-    return this.provider.disconnect(timeout);
+    return this.ws.disconnect(timeout);
   }
 
-  /** Return the current HydraProvider connection/head status. */
-  public getStatus(): hydraStatus {
-    return this.provider.getStatus();
+  /** Return the current Hydra head status (uppercase). */
+  public getStatus(): HydraStatus {
+    return this.ws.getStatus();
   }
 
-  /** Register a callback for HydraProvider status changes. */
-  public onStatusChange(callback: (status: hydraStatus) => void): hydraStatus {
-    return this.provider.onStatusChange(callback);
+  /** Register a callback for head status changes. */
+  public onStatusChange(callback: (status: HydraStatus) => void): HydraStatus {
+    return this.ws.onStatusChange(callback);
   }
 
   /** Begin the head-opening sequence: init, commit, and listen for state changes. */
   public async startHead(commitArgs: CommitArgs) {
     this.mode = 'start';
     await this.connectWithRetry();
-    this.provider.onMessage((msg) => this.handleIncoming(msg, commitArgs));
+    this.ws.on('message', (msg: HydraWsMessage) => this.handleIncoming(msg, commitArgs));
   }
 
   /** Begin the head-closing sequence: close, fanout, and finalize. */
   public async shutdownHead() {
     this.mode = 'shutdown';
     await this.connectWithRetry();
-    this.provider.onMessage((msg) => this.handleIncoming(msg));
+    this.ws.on('message', (msg: HydraWsMessage) => this.handleIncoming(msg));
   }
 
   /**
@@ -177,10 +164,10 @@ export class Wrangler {
             resolve();
             break;
           case 'ReadyToFanout':
-            this.provider.fanout();
+            this.ws.send({ tag: 'Fanout' });
             break;
           case 'Greetings':
-            this.onGreetings(message.headStatus).catch((err) =>
+            this.onGreetings(message.headStatus as HeadStatus).catch((err) =>
               reject(new Error(`Greetings handler failed: ${String(err)}`)),
             );
             break;
@@ -206,7 +193,7 @@ export class Wrangler {
           if (!commitArgs) return;
           this.doCommit(commitArgs).catch((err) => reject(new Error(`Commit failed: ${String(err)}`)));
         } else if (message.tag === 'Greetings') {
-          this.onGreetings(message.headStatus, commitArgs).catch((err) =>
+          this.onGreetings(message.headStatus as HeadStatus, commitArgs).catch((err) =>
             reject(new Error(`Greetings handler failed: ${String(err)}`)),
           );
         }
@@ -225,7 +212,7 @@ export class Wrangler {
     return this.awaitMessage<HeadStatus>(
       (message, resolve, _reject) => {
         if (message.tag === 'Greetings') {
-          resolve(message.headStatus);
+          resolve(message.headStatus as HeadStatus);
         }
       },
       timeoutMs,
@@ -234,33 +221,35 @@ export class Wrangler {
   }
 
   private async doCommit(commitArgs: CommitArgs) {
-    let rawTx: string;
+    let cborHex: string;
     if (commitArgs.blueprintTx) {
-      rawTx = await this.instance.commitBlueprintUTxOs(commitArgs.utxos, commitArgs.blueprintTx);
+      const utxos = await this.fetchUtxos(commitArgs.utxos);
+      const hydraUtxos = toHydraUTxOs(utxos);
+      cborHex = await this.http.buildCommit({ blueprintTx: commitArgs.blueprintTx, utxo: hydraUtxos });
     } else if (commitArgs.utxos.length === 0) {
-      rawTx = await this.instance.commitEmpty();
+      cborHex = await this.http.buildCommit({});
     } else if (commitArgs.utxos.length === 1) {
       const { txHash, outputIndex } = commitArgs.utxos[0];
-      rawTx = await this.instance.commitFunds(txHash, outputIndex);
+      const utxos = await this.blockfrost.fetchUTxOs(txHash, outputIndex);
+      if (!utxos[0]) throw new Error('UTxO not found');
+      const hydraUtxo = toHydraUTxO(utxos[0]);
+      cborHex = await this.http.buildCommit({ [`${txHash}#${outputIndex}`]: hydraUtxo });
     } else {
       throw new Error('Multiple UTxOs without a blueprintTx require a blueprint transaction');
     }
-    return await this.blockfrost.submitTx(rawTx);
+    return await this.blockfrost.submitTx(cborHex);
   }
 
   /**
    * Decommit funds from an open Hydra head back to L1.
    *
-   * Posts the decommit transaction via `provider.publishDecommit()` (HTTP POST)
-   * instead of `provider.decommit()` to avoid overwriting the Wrangler's
-   * `onMessage` handler (single-callback replacement pattern).
-   *
+   * Posts the decommit transaction via HTTP to avoid overwriting message handlers.
    * Resolves on `DecommitApproved` — L1 settlement happens asynchronously.
    *
    * @param transaction - The decommit transaction (CBOR-encoded).
    * @param timeoutMs - Maximum time to wait for approval (default 60s).
    */
-  public async decommit(transaction: hydraTransaction, timeoutMs = 60000): Promise<void> {
+  public async decommit(transaction: HydraTransaction, timeoutMs = 60000): Promise<void> {
     const status = await this.getHeadStatus();
     if (status !== 'Open') {
       throw new Error(`Cannot decommit: head is "${status}", expected "Open"`);
@@ -278,7 +267,7 @@ export class Wrangler {
       'Timeout waiting for decommit approval',
     );
 
-    await this.provider.publishDecommit(transaction);
+    await this.http.publishDecommit(transaction);
 
     return result;
   }
@@ -318,18 +307,37 @@ export class Wrangler {
       throw new Error('Incremental commit requires exactly one UTxO');
     }
     const { txHash, outputIndex } = commitArgs.utxos[0];
-    let rawTx: string;
+    const utxos = await this.blockfrost.fetchUTxOs(txHash, outputIndex);
+    if (!utxos[0]) throw new Error('UTxO not found');
+    const hydraUtxo = toHydraUTxO(utxos[0]);
+
+    let cborHex: string;
     if (commitArgs.blueprintTx) {
-      rawTx = await this.instance.incrementalBlueprintCommit(txHash, outputIndex, commitArgs.blueprintTx);
+      cborHex = await this.http.buildCommit({
+        blueprintTx: commitArgs.blueprintTx,
+        utxo: { [`${txHash}#${outputIndex}`]: hydraUtxo },
+      });
     } else {
-      rawTx = await this.instance.incrementalCommitFunds(txHash, outputIndex);
+      cborHex = await this.http.buildCommit({ [`${txHash}#${outputIndex}`]: hydraUtxo });
     }
-    return await this.blockfrost.submitTx(rawTx);
+    return await this.blockfrost.submitTx(cborHex);
+  }
+
+  private async fetchUtxos(utxoRefs: UTxORef[]) {
+    const results = [];
+    for (const { txHash, outputIndex } of utxoRefs) {
+      const utxos = await this.blockfrost.fetchUTxOs(txHash, outputIndex);
+      if (!utxos.length) {
+        throw new Error(`UTxO not found for ${txHash}#${outputIndex}`);
+      }
+      results.push(...utxos);
+    }
+    return results;
   }
 
   private async handleIncoming(message: HydraWsMessage, commitArgs?: CommitArgs) {
     if (message.tag === 'Greetings') {
-      await this.onGreetings(message.headStatus, commitArgs);
+      await this.onGreetings(message.headStatus as HeadStatus, commitArgs);
     } else {
       switch (this.mode) {
         case 'start':
@@ -350,7 +358,7 @@ export class Wrangler {
           break;
         case 'shutdown':
           if (message.tag === 'ReadyToFanout') {
-            await this.provider.fanout();
+            this.ws.send({ tag: 'Fanout' });
           }
           break;
       }
@@ -363,7 +371,7 @@ export class Wrangler {
         switch (status) {
           case 'Idle':
             console.log('Idle → init()');
-            await this.provider.init();
+            this.ws.send({ tag: 'Init' });
             break;
           case 'Initializing':
             console.log('Initializing -> commit()');
@@ -384,11 +392,11 @@ export class Wrangler {
         switch (status) {
           case 'Open':
             console.log('Shutting down: closing head…');
-            await this.provider.close();
+            this.ws.send({ tag: 'Close' });
             break;
           case 'FanoutPossible':
             console.log('Fanout now possible: fanning out…');
-            await this.provider.fanout();
+            this.ws.send({ tag: 'Fanout' });
             break;
           default:
             console.log(`Greetings in shutdown mode, ignoring status: ${status}`);
