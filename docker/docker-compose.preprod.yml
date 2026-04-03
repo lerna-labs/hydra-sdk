@@ -17,9 +17,9 @@ services:
         "--testnet-magic", "${HYDRA_NETWORK_ID}",
         "--hydra-scripts-tx-id", "${HYDRA_TX_ID}",
         "--persistence-rotate-after", "${PERSISTENCE_ROTATE_AFTER:-2250}",
-        "--contestation-period", "${CONTESTATION_PERIOD:-600}",
-        "--deposit-period", "${DEPOSIT_PERIOD:-3600}",
-        "--api-transaction-timeout", "${API_TX_TIMEOUT:-300}"
+        "--contestation-period", "${CONTESTATION_PERIOD:-600}s",
+        "--deposit-period", "${DEPOSIT_PERIOD:-3600}s",
+        "--api-transaction-timeout", "${API_TX_TIMEOUT:-300}s"
       ]
     ports:
       - "${LISTEN_PORT}:${LISTEN_PORT}"
