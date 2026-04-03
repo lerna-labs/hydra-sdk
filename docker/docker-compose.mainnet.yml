@@ -16,7 +16,10 @@ services:
         "--node-socket", "/${NETWORK}/config/node.socket",
         "--mainnet",
         "--hydra-scripts-tx-id", "${HYDRA_TX_ID}",
-        "--persistence-rotate-after", "2250"
+        "--persistence-rotate-after", "${PERSISTENCE_ROTATE_AFTER:-2250}",
+        "--contestation-period", "${CONTESTATION_PERIOD:-600}",
+        "--deposit-period", "${DEPOSIT_PERIOD:-3600}",
+        "--api-transaction-timeout", "${API_TX_TIMEOUT:-300}"
       ]
     ports:
       - "${LISTEN_PORT}:${LISTEN_PORT}"
