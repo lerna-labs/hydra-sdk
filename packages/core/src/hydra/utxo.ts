@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { requireEnv } from '../config.js';
 
 interface SnapshotUtxoValue {
@@ -38,8 +37,11 @@ export async function getUtxoSet(): Promise<ParsedUtxo[]> {
   const url = `${baseUrl}/snapshot/utxo`;
 
   try {
-    const response = await axios.get<Record<string, SnapshotUtxo>>(url);
-    const data = response.data;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} fetching ${url}`);
+    }
+    const data: Record<string, SnapshotUtxo> = await response.json();
 
     const UtxoSet: ParsedUtxo[] = [];
     for (const [txKey, utxo] of Object.entries(data)) {

@@ -91,8 +91,9 @@ export class HydraWebSocket extends EventEmitter {
   async waitForGreetings(timeoutMs = 30_000): Promise<boolean> {
     if (this._connectionState === 'CONNECTED') return true;
 
-    await this.connect();
-
+    // Register the listener BEFORE connecting so the Greetings message
+    // (which the Hydra node sends immediately after the socket opens)
+    // cannot arrive before we're listening for it.
     return new Promise<boolean>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.removeListener('message', onMsg);
@@ -110,6 +111,12 @@ export class HydraWebSocket extends EventEmitter {
       };
 
       this.on('message', onMsg);
+
+      this.connect().catch((err) => {
+        clearTimeout(timer);
+        this.removeListener('message', onMsg);
+        reject(err);
+      });
     });
   }
 

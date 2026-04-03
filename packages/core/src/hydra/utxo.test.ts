@@ -1,16 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-// Mock axios before importing the module under test
-vi.mock('axios', () => ({
-  default: {
-    get: vi.fn(),
-  },
-}));
-
-import axios from 'axios';
 import { getUtxoSet, queryUtxoByAddress } from './utxo.js';
 
-const mockAxiosGet = vi.mocked(axios.get);
+// Mock fetch
+const mockFetch = vi.fn<typeof fetch>();
+vi.stubGlobal('fetch', mockFetch);
 
 const SAMPLE_SNAPSHOT: Record<string, any> = {
   'abc123#0': {
@@ -31,12 +24,19 @@ const SAMPLE_SNAPSHOT: Record<string, any> = {
   },
 };
 
+function jsonResponse(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 describe('getUtxoSet', () => {
   const originalEnv = process.env.HYDRA_API_URL;
 
   beforeEach(() => {
     process.env.HYDRA_API_URL = 'http://localhost:4001';
-    mockAxiosGet.mockResolvedValue({ data: SAMPLE_SNAPSHOT });
+    mockFetch.mockResolvedValue(jsonResponse(SAMPLE_SNAPSHOT));
   });
 
   afterEach(() => {
@@ -51,7 +51,7 @@ describe('getUtxoSet', () => {
 
   it('calls the correct snapshot endpoint', async () => {
     await getUtxoSet();
-    expect(mockAxiosGet).toHaveBeenCalledWith('http://localhost:4001/snapshot/utxo');
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost:4001/snapshot/utxo');
   });
 
   it('splits txHash#index keys correctly', async () => {
@@ -85,7 +85,7 @@ describe('queryUtxoByAddress', () => {
 
   beforeEach(() => {
     process.env.HYDRA_API_URL = 'http://localhost:4001';
-    mockAxiosGet.mockResolvedValue({ data: SAMPLE_SNAPSHOT });
+    mockFetch.mockResolvedValue(jsonResponse(SAMPLE_SNAPSHOT));
   });
 
   afterEach(() => {
