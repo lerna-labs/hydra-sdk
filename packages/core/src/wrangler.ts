@@ -111,6 +111,12 @@ export class Wrangler {
       this.connectWithRetry()
         .then(() => {
           this.ws.on('message', onMsg);
+          // Replay the Greetings message that was consumed during connection.
+          // The Hydra node only sends Greetings once, so the handler above
+          // would never see it without this replay.
+          if (this.ws.lastGreetings) {
+            onMsg(this.ws.lastGreetings);
+          }
         })
         .catch((err) => settle(reject, new Error(`Failed to connect: ${String(err)}`)));
     });

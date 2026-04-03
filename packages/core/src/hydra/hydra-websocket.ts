@@ -35,6 +35,7 @@ export class HydraWebSocket extends EventEmitter {
   private readonly url: string;
   private _status: HydraStatus = 'IDLE';
   private _connectionState: ConnectionState = 'IDLE';
+  private _lastGreetings: HydraWsMessage | null = null;
 
   constructor(wsUrl: string) {
     super();
@@ -165,7 +166,16 @@ export class HydraWebSocket extends EventEmitter {
     return this._status;
   }
 
+  /** The last Greetings message received, if any. */
+  get lastGreetings(): HydraWsMessage | null {
+    return this._lastGreetings;
+  }
+
   private handleMessage(msg: HydraWsMessage): void {
+    if (msg.tag === 'Greetings') {
+      this._lastGreetings = msg;
+    }
+
     this.emit('message', msg);
 
     // Update status from Greetings headStatus
