@@ -62,7 +62,7 @@ for envfile in .*.*.env; do
 EOF
 
   FOUND=$((FOUND + 1))
-  echo "  ✅ ${NETWORK}/${INSTANCE} → host.docker.internal:${PORT}"
+  echo "  ✅ ${NETWORK}/${INSTANCE} → ${DOCKER_HOST_IP}:${PORT}"
 done
 
 if [[ ${FOUND} -eq 0 ]]; then
