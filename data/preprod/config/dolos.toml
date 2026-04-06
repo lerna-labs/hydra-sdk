@@ -1,0 +1,32 @@
+[upstream]
+peer_address = "preprod-node.world.dev.cardano.org:30000"
+network_magic = 1
+is_testnet = true
+
+[storage]
+version = "v3"
+path = "/data"
+
+[genesis]
+byron_path = "/data/genesis/byron.json"
+shelley_path = "/data/genesis/shelley.json"
+alonzo_path = "/data/genesis/alonzo.json"
+conway_path = "/data/genesis/conway.json"
+
+[sync]
+pull_batch_size = 200
+
+[submit]
+prune_height = 10000
+
+[serve.grpc]
+listen_address = "0.0.0.0:50151"
+permissive_cors = true
+
+[serve.trp]
+listen_address = "0.0.0.0:8164"
+max_optimize_rounds = 10
+permissive_cors = true
+
+[logging]
+max_level = "INFO"

@@ -49,7 +49,24 @@ const { HydraMonitor } = await import('./hydra-monitor.js');
 // ---------------------------------------------------------------------------
 
 function greetingsMsg(headStatus = 'Idle'): HydraWsMessage {
-  return { tag: 'Greetings', headStatus, me: { vkey: 'abc' } } as HydraWsMessage;
+  return {
+    tag: 'Greetings',
+    headStatus,
+    me: { vkey: 'abc123' },
+    hydraHeadId: 'deb5680101c46df8583b02ad2dccccff8058c3d0301a074a876f1c70',
+    hydraNodeVersion: '1.3.0-test',
+    chainSyncedStatus: 'InSync',
+    currentSlot: 119808552,
+    env: {
+      configuredPeers: 'peer1:5001,peer2:5002',
+      contestationPeriod: 120,
+      depositPeriod: 1800,
+      otherParties: [],
+      participants: ['4ab95844', 'deadbeef'],
+      party: { vkey: 'abc123' },
+    },
+    networkInfo: { networkConnected: true, peersInfo: {} },
+  } as HydraWsMessage;
 }
 
 function emitWsMessage(msg: Partial<HydraWsMessage> & { tag: string }) {
@@ -197,6 +214,46 @@ describe('HydraMonitor', () => {
       await monitor.start();
       expect(monitor.greetings?.tag).toBe('Greetings');
       expect(monitor.greetings?.headStatus).toBe('Idle');
+    });
+  });
+
+  describe('headInfo', () => {
+    it('returns null before start', () => {
+      mockWs.lastGreetings = null;
+      expect(monitor.headInfo).toBeNull();
+    });
+
+    it('extracts summary from Greetings', async () => {
+      await monitor.start();
+      const info = monitor.headInfo;
+
+      expect(info).not.toBeNull();
+      expect(info!.headStatus).toBe('Idle');
+      expect(info!.headId).toBe('deb5680101c46df8583b02ad2dccccff8058c3d0301a074a876f1c70');
+      expect(info!.nodeVersion).toBe('1.3.0-test');
+      expect(info!.me).toBe('abc123');
+      expect(info!.contestationPeriod).toBe(120);
+      expect(info!.depositPeriod).toBe(1800);
+      expect(info!.participants).toEqual(['4ab95844', 'deadbeef']);
+      expect(info!.networkConnected).toBe(true);
+      expect(info!.peerCount).toBe(2);
+      expect(info!.chainSyncedStatus).toBe('InSync');
+      expect(info!.currentSlot).toBe(119808552);
+    });
+
+    it('handles missing optional fields', async () => {
+      mockWs.lastGreetings = { tag: 'Greetings', headStatus: 'Idle', me: { vkey: 'xyz' } } as HydraWsMessage;
+      await monitor.start();
+      const info = monitor.headInfo;
+
+      expect(info!.headId).toBeNull();
+      expect(info!.nodeVersion).toBeNull();
+      expect(info!.contestationPeriod).toBeNull();
+      expect(info!.participants).toEqual([]);
+      expect(info!.networkConnected).toBe(false);
+      expect(info!.peerCount).toBe(0);
+      expect(info!.chainSyncedStatus).toBeNull();
+      expect(info!.currentSlot).toBeNull();
     });
   });
 

@@ -82,17 +82,22 @@ HYDRA_COMPOSE := docker/docker-compose.$(NETWORK).yml
 HYDRA_PROJECT := hydra-$(NETWORK)-$(INSTANCE)
 DOCKER_HYDRA := docker compose -f $(HYDRA_COMPOSE) -p $(HYDRA_PROJECT)
 
+MONITORING_COMPOSE := docker/docker-compose.monitoring.yml
+MONITORING_PROJECT := monitoring
+DOCKER_MONITORING := docker compose -f $(MONITORING_COMPOSE) -p $(MONITORING_PROJECT)
+
 # List of make commands
 HYDRA_TARGETS := hydra-start hydra-stop hydra-down hydra-logs hydra-restart hydra-clean hydra-rebuild hydra-pull hydra-status hydra-stats
 CARDANO_TARGETS := cardano-start cardano-stop cardano-logs
 IPFS_TARGETS := ipfs-start ipfs-stop ipfs-down ipfs-logs ipfs-status
+MONITORING_TARGETS := monitoring-start monitoring-stop monitoring-down monitoring-restart monitoring-logs gen-prometheus-config
 UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert
 UTILITY_TARGETS += check-tls-cert _guard-network _guard-instance _abort-if-exists _check-key-exists _prepare-directories
 UTILITY_TARGETS += gen-instance-env reset-instance-counter create-instance extract-cardano-privkey append-admin-pk _assert-middleware
 UTILITY_TARGETS += dolos-init dolos-logs
 UTILITY_TARGETS += test lint typecheck fmt check-releases validate-docker api-snapshot docs
 
-.PHONY: $(HYDRA_TARGETS) $(CARDANO_TARGETS) $(IPFS_TARGETS) $(UTILITY_TARGETS)
+.PHONY: $(HYDRA_TARGETS) $(CARDANO_TARGETS) $(IPFS_TARGETS) $(MONITORING_TARGETS) $(UTILITY_TARGETS)
 
 _assert-middleware: _guard-network _guard-instance
 	@set -a; . .$(NETWORK).$(INSTANCE).env; set +a; \
@@ -153,6 +158,24 @@ ipfs-logs:
 
 ipfs-status:
 	$(DOCKER_IPFS) ps
+
+gen-prometheus-config:
+	@bash ./scripts/generate-prometheus-config.sh
+
+monitoring-start: gen-prometheus-config
+	$(DOCKER_MONITORING) up -d
+
+monitoring-stop:
+	$(DOCKER_MONITORING) stop
+
+monitoring-down:
+	$(DOCKER_MONITORING) down -v
+
+monitoring-restart: gen-prometheus-config
+	$(DOCKER_MONITORING) restart
+
+monitoring-logs:
+	$(DOCKER_MONITORING) logs -ft --tail=50
 
 hydra-start: _assert-middleware _prepare-directories check-hydra-keys check-cardano-keys check-tls-cert gen-trp-config
 	$(DOCKER_HYDRA) up -d
@@ -389,6 +412,14 @@ help:
 	@echo "  ipfs-logs                Tail IPFS node logs"
 	@echo "  ipfs-status              Show IPFS container status"
 	@echo ""
+	@echo "── Monitoring (Prometheus + Grafana) ────────────────────────"
+	@echo "  monitoring-start         Start Prometheus + Grafana (auto-generates config)"
+	@echo "  monitoring-stop          Stop monitoring stack"
+	@echo "  monitoring-down          Stop and remove monitoring containers + volumes"
+	@echo "  monitoring-restart       Restart monitoring (re-generates config)"
+	@echo "  monitoring-logs          Tail monitoring logs"
+	@echo "  gen-prometheus-config    Regenerate Prometheus scrape targets from instance envs"
+	@echo ""
 	@echo "── Hydra Instance ──────────────────────────────────────────"
 	@echo "  hydra-start              Start hydra-node + TRP + express-api"
 	@echo "  hydra-stop               Stop Hydra services"
@@ -429,13 +460,14 @@ help:
 	@echo "  docs                     Generate API reference docs to docs/api/"
 	@echo ""
 	@echo "── Port Allocation (base ports per network) ────────────────"
-	@echo "  Network   Cardano  Express  API   Listen  TRP(Hydra) TRP(Dolos) gRPC(Dolos)"
-	@echo "  offline   3001     3000     4000  5000    8165       —          —"
-	@echo "  preprod   3100     3101     4101  5101    8265       8164       50151"
-	@echo "  mainnet   3000     3001     4001  5001    8165       8064       50051"
+	@echo "  Network   Cardano  Express  API   Listen  TRP(Hydra) Monitor  TRP(Dolos) gRPC(Dolos)"
+	@echo "  offline   3001     3000     4000  5000    8165       6001     —          —"
+	@echo "  preprod   3100     3101     4101  5101    8265       6101     8164       50151"
+	@echo "  mainnet   3000     3001     4001  5001    8165       6001     8064       50051"
 	@echo ""
 	@echo "  Per-instance ports = base + offset (auto-incremented)"
 	@echo "  Dolos ports are per-network (shared across instances)"
+	@echo "  Prometheus: $${PROMETHEUS_PORT:-9090}  Grafana: $${GRAFANA_PORT:-3333}"
 	@echo ""
 	@echo "── Hydra Head Parameters (env vars, all optional) ──────────"
 	@echo "  CONTESTATION_PERIOD      Close contestation window in seconds (default: 600)"

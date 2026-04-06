@@ -24,11 +24,14 @@ services:
         "--initial-utxo",
         "/${NETWORK}/config/utxo.json",
         "--persistence-rotate-after",
-        "1000"
+        "1000",
+        "--monitoring-port",
+        "${MONITORING_PORT:-6001}"
       ]
     ports:
       - "${LISTEN_PORT}:${LISTEN_PORT}"
       - "${API_PORT}:${API_PORT}"
+      - "${MONITORING_PORT:-6001}:${MONITORING_PORT:-6001}"
     volumes:
       - "${DATA_DIR}/config:/${NETWORK}/config:ro"
       - "${DATA_DIR}/instances/${INSTANCE}/keys:/${NETWORK}/keys:ro"

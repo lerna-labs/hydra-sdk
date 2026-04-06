@@ -16,6 +16,7 @@ export type {
   ClientMessage,
   ConnectionState,
   HeadStatus,
+  HydraHeadInfo,
   HydraMessage,
   HydraMonitorOptions,
   HydraStatus,

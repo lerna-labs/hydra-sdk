@@ -4,6 +4,7 @@ export { optionalEnv, requireEnv } from './config.js';
 export { HydraMonitor } from './hydra/hydra-monitor.js';
 export type {
   HeadStatus,
+  HydraHeadInfo,
   HydraMessage,
   HydraMonitorOptions,
   HydraStatus,

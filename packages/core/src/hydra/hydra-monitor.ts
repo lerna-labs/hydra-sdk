@@ -3,6 +3,7 @@ import { HEAD_STATUS_TO_HYDRA, HydraWebSocket, TAG_TO_HYDRA } from './hydra-webs
 import type {
   GreetingsMessage,
   HeadStatus,
+  HydraHeadInfo,
   HydraMessage,
   HydraMonitorOptions,
   HydraStatus,
@@ -114,6 +115,33 @@ export class HydraMonitor extends EventEmitter {
   /** The full Greetings message from the most recent connection. */
   get greetings(): GreetingsMessage | null {
     return this.ws.lastGreetings as GreetingsMessage | null;
+  }
+
+  /**
+   * Summary of Hydra head info extracted from the last Greetings.
+   * Excludes the full UTxO snapshot to keep payloads small.
+   * Returns `null` if no Greetings has been received yet.
+   */
+  get headInfo(): HydraHeadInfo | null {
+    const g = this.greetings;
+    if (!g) return null;
+
+    const peers = g.env?.configuredPeers;
+    const peerCount = peers ? peers.split(',').filter(Boolean).length : 0;
+
+    return {
+      headStatus: g.headStatus,
+      headId: g.hydraHeadId ?? null,
+      nodeVersion: g.hydraNodeVersion ?? null,
+      me: g.me.vkey,
+      contestationPeriod: g.env?.contestationPeriod ?? null,
+      depositPeriod: g.env?.depositPeriod ?? null,
+      participants: g.env?.participants ?? [],
+      networkConnected: g.networkInfo?.networkConnected ?? false,
+      peerCount,
+      chainSyncedStatus: g.chainSyncedStatus ?? null,
+      currentSlot: g.currentSlot ?? null,
+    };
   }
 
   /** The last N events (configurable via eventBufferSize). Most recent last. */

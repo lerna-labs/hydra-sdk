@@ -79,6 +79,33 @@ export type ClientInput =
 // ── Server Messages (inbound) ────────────────────────────────────────
 
 /** Greetings message received on initial WebSocket connection. */
+/** Hydra node environment info reported in Greetings. */
+export interface HydraEnv {
+  /** Configured peer addresses (comma-separated or empty). */
+  configuredPeers: string;
+  /** Contestation period in seconds. */
+  contestationPeriod: number;
+  /** Deposit period in seconds. */
+  depositPeriod: number;
+  /** Other parties' verification keys. */
+  otherParties: { vkey: string }[];
+  /** All participant key hashes. */
+  participants: string[];
+  /** This node's party identity. */
+  party: { vkey: string };
+  [key: string]: unknown;
+}
+
+/** Network connectivity info reported in Greetings. */
+export interface HydraNetworkInfo {
+  /** Whether the node is connected to the Cardano network. */
+  networkConnected: boolean;
+  /** Per-peer connection info. */
+  peersInfo: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** Greetings message received on initial WebSocket connection. */
 export interface GreetingsMessage {
   tag: 'Greetings';
   me: { vkey: string };
@@ -86,8 +113,41 @@ export interface GreetingsMessage {
   hydraHeadId?: string;
   snapshotUtxo?: HydraUTxOs;
   hydraNodeVersion?: string;
-  env?: Record<string, unknown>;
-  networkInfo?: Record<string, unknown>;
+  env?: HydraEnv;
+  networkInfo?: HydraNetworkInfo;
+  /** L1 chain sync status (e.g. `"InSync"`). Available in Hydra >= 1.3.0. */
+  chainSyncedStatus?: string;
+  /** Current L1 slot number. Available in Hydra >= 1.3.0. */
+  currentSlot?: number;
+}
+
+/**
+ * Summary of Hydra head info extracted from the Greetings message.
+ * Excludes the full UTxO snapshot to keep payloads small.
+ */
+export interface HydraHeadInfo {
+  /** Current head status. */
+  headStatus: HeadStatus;
+  /** On-chain head identifier / policy ID (null when head is Idle / not yet initialized). */
+  headId: string | null;
+  /** Hydra node version string. */
+  nodeVersion: string | null;
+  /** This node's verification key. */
+  me: string;
+  /** Contestation period in seconds. */
+  contestationPeriod: number | null;
+  /** Deposit period in seconds. */
+  depositPeriod: number | null;
+  /** All participant key hashes. */
+  participants: string[];
+  /** Whether the node is connected to the Cardano network. */
+  networkConnected: boolean;
+  /** Number of configured peers. */
+  peerCount: number;
+  /** L1 chain sync status (e.g. `"InSync"`). Null if not reported (Hydra < 1.3.0). */
+  chainSyncedStatus: string | null;
+  /** Current L1 slot number. Null if not reported (Hydra < 1.3.0). */
+  currentSlot: number | null;
 }
 
 export interface HeadIsInitializingMessage {

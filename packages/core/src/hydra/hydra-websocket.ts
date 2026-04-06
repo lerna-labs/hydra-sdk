@@ -172,11 +172,18 @@ export class HydraWebSocket extends EventEmitter {
   }
 
   private handleMessage(msg: HydraWsMessage): void {
+    // Strip sensitive fields before caching or emitting
     if (msg.tag === 'Greetings') {
-      this._lastGreetings = msg;
+      const sanitized = { ...msg };
+      if (sanitized.env && typeof sanitized.env === 'object') {
+        const { signingKey: _, ...safeEnv } = sanitized.env as Record<string, unknown>;
+        sanitized.env = safeEnv;
+      }
+      this._lastGreetings = sanitized;
+      this.emit('message', sanitized);
+    } else {
+      this.emit('message', msg);
     }
-
-    this.emit('message', msg);
 
     // Update status from Greetings headStatus
     if (msg.tag === 'Greetings' && 'headStatus' in msg) {

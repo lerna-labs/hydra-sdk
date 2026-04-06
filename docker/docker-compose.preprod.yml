@@ -19,11 +19,13 @@ services:
         "--persistence-rotate-after", "${PERSISTENCE_ROTATE_AFTER:-2250}",
         "--contestation-period", "${CONTESTATION_PERIOD:-600}s",
         "--deposit-period", "${DEPOSIT_PERIOD:-3600}s",
-        "--api-transaction-timeout", "${API_TX_TIMEOUT:-300}s"
+        "--api-transaction-timeout", "${API_TX_TIMEOUT:-300}s",
+        "--monitoring-port", "${MONITORING_PORT:-6001}"
       ]
     ports:
       - "${LISTEN_PORT}:${LISTEN_PORT}"
       - "${API_PORT}:${API_PORT}"
+      - "${MONITORING_PORT:-6001}:${MONITORING_PORT:-6001}"
     volumes:
       - "${DATA_DIR}/config:/${NETWORK}/config:ro"
       - "${DATA_DIR}/instances/${INSTANCE}/keys:/${NETWORK}/keys:ro"
