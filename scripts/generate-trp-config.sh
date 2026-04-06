@@ -37,7 +37,7 @@ cat > "${CONFIG_PATH}" <<EOF
 [trp]
 listen_address = "${TRP_LISTEN_URL}"
 permissive_cors = true
-max_connections = "${TRP_MAX_CONNECTIONS}"
+max_connections = ${TRP_MAX_CONNECTIONS}
 
 [hydra]
 ws_url = "${HYDRA_WS_URL}"
