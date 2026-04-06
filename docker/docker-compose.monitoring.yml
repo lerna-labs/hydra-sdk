@@ -3,23 +3,18 @@ services:
     container_name: prometheus
     image: prom/prometheus:latest
     restart: unless-stopped
-    ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+    network_mode: host
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   grafana:
     container_name: grafana
     image: grafana/grafana:latest
     restart: unless-stopped
-    depends_on:
-      - prometheus
-    ports:
-      - "${GRAFANA_PORT:-3333}:3000"
+    network_mode: host
     environment:
+      - GF_SERVER_HTTP_PORT=${GRAFANA_PORT:-3333}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
