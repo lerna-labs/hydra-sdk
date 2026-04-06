@@ -8,6 +8,7 @@ set -euo pipefail
 : "${HYDRA_API_PORT:=4001}"
 : "${HYDRA_NETWORK:=0}"
 : "${USE_TLS:=0}"
+: "${TRP_MAX_CONNECTIONS:=100}"
 
 # Determine schemes based on USE_TLS
 if [ "${USE_TLS}" = "1" ] || [ "${USE_TLS,,}" = "true" ]; then
@@ -36,6 +37,7 @@ cat > "${CONFIG_PATH}" <<EOF
 [trp]
 listen_address = "${TRP_LISTEN_URL}"
 permissive_cors = true
+max_connections = "${TRP_MAX_CONNECTIONS}"
 
 [hydra]
 ws_url = "${HYDRA_WS_URL}"
