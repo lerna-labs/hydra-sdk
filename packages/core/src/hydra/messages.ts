@@ -17,10 +17,12 @@ export type {
   ConnectionState,
   HeadStatus,
   HydraMessage,
+  HydraMonitorOptions,
   HydraStatus,
   HydraTransaction,
   HydraWsMessage,
   hydraStatus,
   hydraTransaction,
   ServerOutput,
+  TimestampedEvent,
 } from './types.js';

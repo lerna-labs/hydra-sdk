@@ -1,17 +1,20 @@
 export type { DiskCache, DiskCacheConfig } from './cache/disk-cache.js';
 export { createDiskCache } from './cache/disk-cache.js';
 export { optionalEnv, requireEnv } from './config.js';
+export { HydraMonitor } from './hydra/hydra-monitor.js';
 export type {
   HeadStatus,
   HydraMessage,
+  HydraMonitorOptions,
   HydraStatus,
   HydraTransaction,
   HydraWsMessage,
   hydraStatus,
   hydraTransaction,
   ServerOutput,
+  TimestampedEvent,
 } from './hydra/messages.js';
-export type { ParsedUtxo } from './hydra/utxo.js';
+export type { ParsedUtxo, UtxoQueryOptions } from './hydra/utxo.js';
 export { getUtxoSet, queryUtxoByAddress } from './hydra/utxo.js';
 export type { IpfsClient, IpfsConfig, PinResult } from './ipfs/ipfs.js';
 export { createIpfsClient } from './ipfs/ipfs.js';

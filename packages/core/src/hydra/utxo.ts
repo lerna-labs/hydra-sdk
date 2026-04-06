@@ -8,8 +8,8 @@ interface SnapshotUtxo {
   address: string;
   datum: null | string;
   datumHash: null | string;
-  inlineDatum: null | string;
-  referenceScript: null | string;
+  inlineDatum: null | unknown;
+  referenceScript: null | unknown;
   value: SnapshotUtxoValue;
 }
 
@@ -22,6 +22,16 @@ export interface ParsedUtxo {
     unit: string;
     quantity: string;
   }[];
+  datum?: string | null;
+  datumHash?: string | null;
+  inlineDatum?: unknown | null;
+  referenceScript?: unknown | null;
+}
+
+/** Options for UTxO query functions. */
+export interface UtxoQueryOptions {
+  /** Include datum, datumHash, inlineDatum, and referenceScript fields. Defaults to `false`. */
+  includeDatums?: boolean;
 }
 
 /**
@@ -29,9 +39,10 @@ export interface ParsedUtxo {
  *
  * Reads `HYDRA_API_URL` from the environment.
  *
+ * @param options - Query options. Set `includeDatums: true` to include datum/script fields.
  * @returns All UTxOs currently held in the Hydra head.
  */
-export async function getUtxoSet(): Promise<ParsedUtxo[]> {
+export async function getUtxoSet(options?: UtxoQueryOptions): Promise<ParsedUtxo[]> {
   const baseUrl = requireEnv('HYDRA_API_URL');
 
   const url = `${baseUrl}/snapshot/utxo`;
@@ -52,12 +63,16 @@ export async function getUtxoSet(): Promise<ParsedUtxo[]> {
         quantity,
       }));
 
-      UtxoSet.push({
-        tx_hash,
-        output_index,
-        address: utxo.address,
-        amount,
-      });
+      const parsed: ParsedUtxo = { tx_hash, output_index, address: utxo.address, amount };
+
+      if (options?.includeDatums) {
+        parsed.datum = utxo.datum ?? null;
+        parsed.datumHash = utxo.datumHash ?? null;
+        parsed.inlineDatum = utxo.inlineDatum ?? null;
+        parsed.referenceScript = utxo.referenceScript ?? null;
+      }
+
+      UtxoSet.push(parsed);
     }
 
     return UtxoSet;
@@ -73,9 +88,9 @@ export async function getUtxoSet(): Promise<ParsedUtxo[]> {
  * @param address - Bech32 address to filter by.
  * @returns UTxOs matching the given address.
  */
-export async function queryUtxoByAddress(address: string): Promise<ParsedUtxo[]> {
+export async function queryUtxoByAddress(address: string, options?: UtxoQueryOptions): Promise<ParsedUtxo[]> {
   const result: ParsedUtxo[] = [];
-  const data = await getUtxoSet();
+  const data = await getUtxoSet(options);
   for (const utxo of data) {
     if (utxo.address === address) {
       result.push(utxo);

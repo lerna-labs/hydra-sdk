@@ -17,8 +17,8 @@ const SAMPLE_SNAPSHOT: Record<string, any> = {
   'def456#2': {
     address: 'addr_test1qz_bob',
     datum: null,
-    datumHash: null,
-    inlineDatum: null,
+    datumHash: 'abc123hash',
+    inlineDatum: { constructor: 0, fields: [{ int: 42 }] },
     referenceScript: null,
     value: { lovelace: '10000000', 'policyId.tokenName': '100' },
   },
@@ -77,6 +77,28 @@ describe('getUtxoSet', () => {
     const result = await getUtxoSet();
     const alice = result.find((u) => u.tx_hash === 'abc123');
     expect(alice?.address).toBe('addr_test1qz_alice');
+  });
+
+  it('excludes datum fields by default', async () => {
+    const result = await getUtxoSet();
+    const bob = result.find((u) => u.tx_hash === 'def456');
+    expect(bob).not.toHaveProperty('datum');
+    expect(bob).not.toHaveProperty('datumHash');
+    expect(bob).not.toHaveProperty('inlineDatum');
+    expect(bob).not.toHaveProperty('referenceScript');
+  });
+
+  it('includes datum fields when includeDatums is true', async () => {
+    const result = await getUtxoSet({ includeDatums: true });
+    const alice = result.find((u) => u.tx_hash === 'abc123');
+    expect(alice?.datum).toBeNull();
+    expect(alice?.datumHash).toBeNull();
+    expect(alice?.inlineDatum).toBeNull();
+
+    const bob = result.find((u) => u.tx_hash === 'def456');
+    expect(bob?.datumHash).toBe('abc123hash');
+    expect(bob?.inlineDatum).toEqual({ constructor: 0, fields: [{ int: 42 }] });
+    expect(bob?.referenceScript).toBeNull();
   });
 });
 

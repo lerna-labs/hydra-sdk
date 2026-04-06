@@ -1,9 +1,19 @@
 import { BlockfrostProvider } from '@meshsdk/core';
 import { requireEnv } from './config.js';
 import { HydraHttpClient } from './hydra/hydra-http-client.js';
+import type { HydraMonitor } from './hydra/hydra-monitor.js';
 import { HydraWebSocket } from './hydra/hydra-websocket.js';
 import type { HeadStatus, HydraStatus, HydraTransaction, HydraWsMessage } from './hydra/types.js';
 import { toHydraUTxO, toHydraUTxOs } from './hydra/utxo-conversion.js';
+
+const HYDRA_TO_HEAD_STATUS: Record<HydraStatus, HeadStatus> = {
+  IDLE: 'Idle',
+  INITIALIZING: 'Initializing',
+  OPEN: 'Open',
+  CLOSED: 'Closed',
+  FANOUT_POSSIBLE: 'FanoutPossible',
+  FINAL: 'Final',
+};
 
 /** UTxO reference for committing funds into a Hydra head. */
 export interface UTxORef {
@@ -41,13 +51,21 @@ export class Wrangler {
   public readonly ws: HydraWebSocket;
   public readonly http: HydraHttpClient;
   private readonly blockfrost: BlockfrostProvider;
+  private readonly monitor: HydraMonitor | null;
 
-  constructor(url?: string, wsUrl?: string) {
+  constructor(url?: string, wsUrl?: string, monitor?: HydraMonitor) {
     const httpUrl = url || requireEnv('HYDRA_API_URL');
-    const socketUrl = wsUrl || requireEnv('HYDRA_WS_URL');
     this.blockfrost = new BlockfrostProvider(requireEnv('BLOCKFROST_API_KEY'));
-    this.ws = new HydraWebSocket(socketUrl);
     this.http = new HydraHttpClient(httpUrl);
+    this.monitor = monitor ?? null;
+
+    if (monitor) {
+      // Share the monitor's WebSocket — no new connections
+      this.ws = monitor.ws;
+    } else {
+      const socketUrl = wsUrl || requireEnv('HYDRA_WS_URL');
+      this.ws = new HydraWebSocket(socketUrl);
+    }
   }
 
   /**
@@ -60,6 +78,9 @@ export class Wrangler {
    * @param baseDelayMs - Initial retry delay in milliseconds (default 1000). Doubles each attempt, capped at 30 s.
    */
   private async connectWithRetry(maxAttempts = 5, baseDelayMs = 1000): Promise<void> {
+    // When using a monitor, the WebSocket is already connected
+    if (this.monitor?.connected) return;
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const connected = await this.ws.waitForGreetings();
@@ -215,6 +236,11 @@ export class Wrangler {
    * @returns The head status string (e.g. `"Idle"`, `"Open"`, `"Closed"`).
    */
   public async getHeadStatus(timeoutMs = 5000): Promise<HeadStatus> {
+    // When using a monitor, read the cached status directly — no new WebSocket
+    if (this.monitor?.connected) {
+      return HYDRA_TO_HEAD_STATUS[this.monitor.headStatus];
+    }
+
     return this.awaitMessage<HeadStatus>(
       (message, resolve, _reject) => {
         if (message.tag === 'Greetings') {

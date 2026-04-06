@@ -28,7 +28,7 @@ export class HydraHttpClient {
    * `POST /decommit` — submits the decommit request to the Hydra node.
    */
   async publishDecommit(transaction: HydraTransaction): Promise<unknown> {
-    return this.post('/decommit', { tag: 'Decommit', transaction });
+    return this.post('/decommit', transaction);
   }
 
   /** Fetch the current UTxO snapshot. `GET /snapshot/utxo` */

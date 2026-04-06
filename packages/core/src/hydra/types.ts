@@ -234,3 +234,32 @@ export type HydraWsMessage = ServerOutput | ClientMessage;
  * ```
  */
 export type HydraMessage<T extends ServerOutput['tag']> = Extract<ServerOutput, { tag: T }>;
+
+// ── Monitor Types ────────────────────────────────────────────────────
+
+/** Configuration options for HydraMonitor. */
+export interface HydraMonitorOptions {
+  /** Hydra node WebSocket URL. */
+  wsUrl: string;
+  /** Auto-reconnect configuration. */
+  reconnect?: {
+    /** Whether to reconnect on unexpected close. Default: `true`. */
+    enabled?: boolean;
+    /** Initial retry delay in milliseconds. Default: `1000`. */
+    baseDelayMs?: number;
+    /** Maximum retry delay in milliseconds. Default: `30000`. */
+    maxDelayMs?: number;
+    /** Maximum reconnect attempts. Default: `Infinity` (keep trying forever). */
+    maxAttempts?: number;
+  };
+  /** Number of recent events to retain in the ring buffer. Default: `100`. */
+  eventBufferSize?: number;
+}
+
+/** A timestamped Hydra WebSocket event for the recent events buffer. */
+export interface TimestampedEvent {
+  /** Unix timestamp (ms) when the message was received. */
+  timestamp: number;
+  /** The raw Hydra message. */
+  message: HydraWsMessage;
+}

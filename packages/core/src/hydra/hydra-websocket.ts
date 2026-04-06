@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import WebSocket from 'ws';
 import type { ClientInput, ConnectionState, HeadStatus, HydraStatus, HydraWsMessage } from './types.js';
 
-const HEAD_STATUS_TO_HYDRA: Record<HeadStatus, HydraStatus> = {
+export const HEAD_STATUS_TO_HYDRA: Record<HeadStatus, HydraStatus> = {
   Idle: 'IDLE',
   Initializing: 'INITIALIZING',
   Open: 'OPEN',
@@ -11,7 +11,7 @@ const HEAD_STATUS_TO_HYDRA: Record<HeadStatus, HydraStatus> = {
   Final: 'FINAL',
 };
 
-const TAG_TO_HYDRA: Record<string, HydraStatus> = {
+export const TAG_TO_HYDRA: Record<string, HydraStatus> = {
   HeadIsInitializing: 'INITIALIZING',
   HeadIsOpen: 'OPEN',
   HeadIsClosed: 'CLOSED',

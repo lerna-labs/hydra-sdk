@@ -88,15 +88,16 @@ describe('HydraHttpClient', () => {
   });
 
   describe('publishDecommit()', () => {
-    it('POSTs to /decommit with wrapped transaction', async () => {
+    it('POSTs the transaction envelope directly to /decommit', async () => {
       const tx = { type: 'Tx ConwayEra' as const, cborHex: 'decommit-cbor', description: '' };
       mockFetch.mockResolvedValueOnce(jsonResponse({ cborHex: 'result' }));
 
       await client.publishDecommit(tx);
 
       const body = JSON.parse(mockFetch.mock.calls[0][1]!.body as string);
-      expect(body.tag).toBe('Decommit');
-      expect(body.transaction.cborHex).toBe('decommit-cbor');
+      expect(body.type).toBe('Tx ConwayEra');
+      expect(body.cborHex).toBe('decommit-cbor');
+      expect(body.tag).toBeUndefined();
     });
   });
 
