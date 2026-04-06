@@ -46,7 +46,7 @@ for envfile in .*.*.env; do
   INSTANCE="${basename#*.}"
 
   # Skip if no MONITORING_PORT defined
-  PORT=$(grep -E "^MONITORING_PORT=" "${envfile}" 2>/dev/null | head -n1 | cut -d= -f2-)
+  PORT=$(grep -E "^MONITORING_PORT=" "${envfile}" 2>/dev/null | head -n1 | cut -d= -f2- || true)
   if [[ -z "${PORT}" ]]; then
     continue
   fi
