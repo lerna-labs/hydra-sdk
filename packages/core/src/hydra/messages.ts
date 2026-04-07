@@ -14,11 +14,13 @@
 export type {
   ClientInput,
   ClientMessage,
+  ConfirmedSnapshot,
   ConnectionState,
   HeadStatus,
   HydraHeadInfo,
   HydraMessage,
   HydraMonitorOptions,
+  HydraSnapshot,
   HydraStatus,
   HydraTransaction,
   HydraWsMessage,

@@ -3,10 +3,12 @@ export { createDiskCache } from './cache/disk-cache.js';
 export { optionalEnv, requireEnv } from './config.js';
 export { HydraMonitor } from './hydra/hydra-monitor.js';
 export type {
+  ConfirmedSnapshot,
   HeadStatus,
   HydraHeadInfo,
   HydraMessage,
   HydraMonitorOptions,
+  HydraSnapshot,
   HydraStatus,
   HydraTransaction,
   HydraWsMessage,

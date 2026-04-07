@@ -63,6 +63,27 @@ export type hydraStatus = HydraStatus;
 /** Connection state of the WebSocket. */
 export type ConnectionState = 'IDLE' | 'CONNECTING' | 'CONNECTED' | 'FAILED' | 'DISCONNECTED';
 
+// ── Snapshot ─────────────────────────────────────────────────────────
+
+/** A confirmed Hydra L2 snapshot. */
+export interface HydraSnapshot {
+  headId: string;
+  version: number;
+  number: number;
+  confirmed: HydraTransaction[];
+  utxo: HydraUTxOs;
+  utxoToCommit: HydraUTxOs | null;
+  utxoToDecommit: HydraUTxOs | null;
+}
+
+/** Multi-party aggregate signature map. */
+export type MultiSignature = Record<string, string>;
+
+/** Discriminated union for confirmed snapshot variants. */
+export type ConfirmedSnapshot =
+  | { tag: 'InitialSnapshot'; headId: string; initialUTxO?: HydraUTxOs }
+  | { tag: 'ConfirmedSnapshot'; snapshot: HydraSnapshot; signatures: MultiSignature };
+
 // ── Client Messages (outbound) ───────────────────────────────────────
 
 /** Messages that can be sent to the Hydra node over WebSocket. */
@@ -71,36 +92,31 @@ export type ClientInput =
   | { tag: 'Abort' }
   | { tag: 'NewTx'; transaction: HydraTransaction }
   | { tag: 'Close' }
+  | { tag: 'SafeClose' }
   | { tag: 'Contest' }
   | { tag: 'Fanout' }
-  | { tag: 'Decommit'; transaction: HydraTransaction }
-  | { tag: 'Recover'; recoverTxId: string };
+  | { tag: 'Decommit'; decommitTx: HydraTransaction }
+  | { tag: 'Recover'; recoverTxId: string }
+  | { tag: 'SideLoadSnapshot'; snapshot: ConfirmedSnapshot };
 
 // ── Server Messages (inbound) ────────────────────────────────────────
 
-/** Greetings message received on initial WebSocket connection. */
 /** Hydra node environment info reported in Greetings. */
 export interface HydraEnv {
-  /** Configured peer addresses (comma-separated or empty). */
-  configuredPeers: string;
-  /** Contestation period in seconds. */
-  contestationPeriod: number;
-  /** Deposit period in seconds. */
-  depositPeriod: number;
-  /** Other parties' verification keys. */
-  otherParties: { vkey: string }[];
-  /** All participant key hashes. */
-  participants: string[];
-  /** This node's party identity. */
   party: { vkey: string };
+  signingKey?: string;
+  otherParties: { vkey: string }[];
+  participants: string[];
+  contestationPeriod: number;
+  depositPeriod: number;
+  unsyncedPeriod?: number;
+  configuredPeers: string;
   [key: string]: unknown;
 }
 
 /** Network connectivity info reported in Greetings. */
 export interface HydraNetworkInfo {
-  /** Whether the node is connected to the Cardano network. */
   networkConnected: boolean;
-  /** Per-peer connection info. */
   peersInfo: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -112,13 +128,12 @@ export interface GreetingsMessage {
   headStatus: HeadStatus;
   hydraHeadId?: string;
   snapshotUtxo?: HydraUTxOs;
-  hydraNodeVersion?: string;
-  env?: HydraEnv;
-  networkInfo?: HydraNetworkInfo;
-  /** L1 chain sync status (e.g. `"InSync"`). Available in Hydra >= 1.3.0. */
-  chainSyncedStatus?: string;
-  /** Current L1 slot number. Available in Hydra >= 1.3.0. */
-  currentSlot?: number;
+  timestamp?: string;
+  hydraNodeVersion: string;
+  env: HydraEnv;
+  networkInfo: HydraNetworkInfo;
+  chainSyncedStatus: string;
+  currentSlot: number;
 }
 
 /**
@@ -126,34 +141,27 @@ export interface GreetingsMessage {
  * Excludes the full UTxO snapshot to keep payloads small.
  */
 export interface HydraHeadInfo {
-  /** Current head status. */
   headStatus: HeadStatus;
-  /** On-chain head identifier / policy ID (null when head is Idle / not yet initialized). */
   headId: string | null;
-  /** Hydra node version string. */
   nodeVersion: string | null;
-  /** This node's verification key. */
   me: string;
-  /** Contestation period in seconds. */
   contestationPeriod: number | null;
-  /** Deposit period in seconds. */
   depositPeriod: number | null;
-  /** All participant key hashes. */
   participants: string[];
-  /** Whether the node is connected to the Cardano network. */
   networkConnected: boolean;
-  /** Number of configured peers. */
   peerCount: number;
-  /** L1 chain sync status (e.g. `"InSync"`). Null if not reported (Hydra < 1.3.0). */
   chainSyncedStatus: string | null;
-  /** Current L1 slot number. Null if not reported (Hydra < 1.3.0). */
   currentSlot: number | null;
 }
+
+// ── Head lifecycle messages ──────────────────────────────────────────
 
 export interface HeadIsInitializingMessage {
   tag: 'HeadIsInitializing';
   headId: string;
   parties: { vkey: string }[];
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
@@ -161,92 +169,348 @@ export interface CommittedMessage {
   tag: 'Committed';
   party: { vkey: string };
   utxo: HydraUTxOs;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
 export interface HeadIsOpenMessage {
   tag: 'HeadIsOpen';
+  headId: string;
   utxo: HydraUTxOs;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
 export interface HeadIsClosedMessage {
   tag: 'HeadIsClosed';
+  headId: string;
+  snapshotNumber: number;
+  contestationDeadline: string;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
 export interface HeadIsContestedMessage {
   tag: 'HeadIsContested';
+  headId: string;
+  snapshotNumber: number;
+  contestationDeadline: string;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
 export interface ReadyToFanoutMessage {
   tag: 'ReadyToFanout';
+  headId: string;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
 export interface HeadIsAbortedMessage {
   tag: 'HeadIsAborted';
+  headId: string;
+  utxo: HydraUTxOs;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
 export interface HeadIsFinalizedMessage {
   tag: 'HeadIsFinalized';
+  headId: string;
+  utxo: HydraUTxOs;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
+// ── Transaction messages ─────────────────────────────────────────────
+
 export interface TxValidMessage {
   tag: 'TxValid';
-  transaction: HydraTransaction;
+  headId: string;
+  transactionId: string;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
 export interface TxInvalidMessage {
   tag: 'TxInvalid';
+  headId: string;
+  utxo: HydraUTxOs;
   transaction: HydraTransaction;
   validationError: { reason: string };
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
 export interface SnapshotConfirmedMessage {
   tag: 'SnapshotConfirmed';
+  headId: string;
+  snapshot: HydraSnapshot;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
-export interface DecommitApprovedMessage {
-  tag: 'DecommitApproved';
+export interface SnapshotSideLoadedMessage {
+  tag: 'SnapshotSideLoaded';
+  headId: string;
+  snapshotNumber: number;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
-export interface DecommitInvalidMessage {
-  tag: 'DecommitInvalid';
-  decommitInvalidReason: unknown;
-  [key: string]: unknown;
-}
+// ── Commit / Deposit messages ────────────────────────────────────────
 
-export interface DecommitFinalizedMessage {
-  tag: 'DecommitFinalized';
-  [key: string]: unknown;
-}
-
-export interface CommitFinalizedMessage {
-  tag: 'CommitFinalized';
+export interface CommitRecordedMessage {
+  tag: 'CommitRecorded';
+  headId: string;
+  utxoToCommit: HydraUTxOs;
+  pendingDeposit: string;
+  deadline: string;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
 
 export interface CommitApprovedMessage {
   tag: 'CommitApproved';
+  headId: string;
+  utxoToCommit: HydraUTxOs;
+  seq: number;
+  timestamp: string;
   [key: string]: unknown;
 }
+
+export interface CommitFinalizedMessage {
+  tag: 'CommitFinalized';
+  headId: string;
+  depositTxId: string;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface CommitRecoveredMessage {
+  tag: 'CommitRecovered';
+  headId: string;
+  recoveredUTxO: HydraUTxOs;
+  recoveredTxId: string;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface DepositActivatedMessage {
+  tag: 'DepositActivated';
+  headId: string;
+  depositTxId: string;
+  deadline: string;
+  chainTime: string;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface DepositExpiredMessage {
+  tag: 'DepositExpired';
+  headId: string;
+  depositTxId: string;
+  deadline: string;
+  chainTime: string;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+// ── Decommit messages ────────────────────────────────────────────────
+
+export interface DecommitRequestedMessage {
+  tag: 'DecommitRequested';
+  headId: string;
+  decommitTx: HydraTransaction;
+  utxoToDecommit: HydraUTxOs;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface DecommitApprovedMessage {
+  tag: 'DecommitApproved';
+  headId: string;
+  decommitTxId: string;
+  utxoToDecommit: HydraUTxOs;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface DecommitFinalizedMessage {
+  tag: 'DecommitFinalized';
+  headId: string;
+  distributedUTxO: HydraUTxOs;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface DecommitInvalidMessage {
+  tag: 'DecommitInvalid';
+  headId: string;
+  decommitTx: HydraTransaction;
+  decommitInvalidReason:
+    | { tag: 'DecommitTxInvalid'; localUTxO: HydraUTxOs; validationError: { reason: string } }
+    | { tag: 'DecommitAlreadyInFlight'; otherDecommitTxId: string };
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+// ── Error / status messages ──────────────────────────────────────────
 
 export interface CommandFailedMessage {
   tag: 'CommandFailed';
   clientInput: ClientInput;
+  state: unknown;
   [key: string]: unknown;
 }
 
 export interface PostTxOnChainFailedMessage {
   tag: 'PostTxOnChainFailed';
+  postChainTx: unknown;
+  postTxError: unknown;
+  [key: string]: unknown;
+}
+
+export interface InvalidInputMessage {
+  tag: 'InvalidInput';
+  reason: string;
+  input: string;
+  [key: string]: unknown;
+}
+
+export interface RejectedInputBecauseUnsyncedMessage {
+  tag: 'RejectedInputBecauseUnsynced';
+  clientInput: ClientInput;
+  drift: number;
+  [key: string]: unknown;
+}
+
+export interface SideLoadSnapshotRejectedMessage {
+  tag: 'SideLoadSnapshotRejected';
+  clientInput: ClientInput;
+  requirementFailure: unknown;
+  [key: string]: unknown;
+}
+
+// ── Network / peer messages ──────────────────────────────────────────
+
+export interface PeerConnectedMessage {
+  tag: 'PeerConnected';
+  peer: string;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface PeerDisconnectedMessage {
+  tag: 'PeerDisconnected';
+  peer: string;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface NetworkConnectedMessage {
+  tag: 'NetworkConnected';
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface NetworkDisconnectedMessage {
+  tag: 'NetworkDisconnected';
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface NetworkVersionMismatchMessage {
+  tag: 'NetworkVersionMismatch';
+  ourVersion: unknown;
+  theirVersion: unknown;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface NetworkClusterIDMismatchMessage {
+  tag: 'NetworkClusterIDMismatch';
+  clusterPeers?: unknown;
+  misconfiguredPeers?: unknown;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+// ── Sync / node status messages ──────────────────────────────────────
+
+export interface SyncedStatusReportMessage {
+  tag: 'SyncedStatusReport';
+  chainSlot: number;
+  chainTime: string;
+  drift: number;
+  synced: string;
+  [key: string]: unknown;
+}
+
+export interface NodeSyncedMessage {
+  tag: 'NodeSynced';
+  chainSlot: number;
+  chainTime: string;
+  drift: number;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface NodeUnsyncedMessage {
+  tag: 'NodeUnsynced';
+  chainSlot: number;
+  chainTime: string;
+  drift: number;
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+// ── Misc messages ────────────────────────────────────────────────────
+
+export interface IgnoredHeadInitializingMessage {
+  tag: 'IgnoredHeadInitializing';
+  headId: string;
+  contestationPeriod: number;
+  parties: { vkey: string }[];
+  participants: string[];
+  seq: number;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface EventLogRotatedMessage {
+  tag: 'EventLogRotated';
+  seq: number;
+  checkpoint: unknown;
+  timestamp: string;
   [key: string]: unknown;
 }
 
@@ -256,9 +520,13 @@ export interface UnknownMessage {
   [key: string]: unknown;
 }
 
+// ── Server Output union ──────────────────────────────────────────────
+
 /** All possible messages the Hydra node can send over its WebSocket API. */
 export type ServerOutput =
+  // Greetings
   | GreetingsMessage
+  // Head lifecycle
   | HeadIsInitializingMessage
   | CommittedMessage
   | HeadIsOpenMessage
@@ -267,16 +535,44 @@ export type ServerOutput =
   | ReadyToFanoutMessage
   | HeadIsAbortedMessage
   | HeadIsFinalizedMessage
+  // Transactions & snapshots
   | TxValidMessage
   | TxInvalidMessage
   | SnapshotConfirmedMessage
-  | DecommitApprovedMessage
-  | DecommitInvalidMessage
-  | DecommitFinalizedMessage
-  | CommitFinalizedMessage
+  | SnapshotSideLoadedMessage
+  // Commits / deposits
+  | CommitRecordedMessage
   | CommitApprovedMessage
+  | CommitFinalizedMessage
+  | CommitRecoveredMessage
+  | DepositActivatedMessage
+  | DepositExpiredMessage
+  // Decommits
+  | DecommitRequestedMessage
+  | DecommitApprovedMessage
+  | DecommitFinalizedMessage
+  | DecommitInvalidMessage
+  // Errors
   | CommandFailedMessage
   | PostTxOnChainFailedMessage
+  | InvalidInputMessage
+  | RejectedInputBecauseUnsyncedMessage
+  | SideLoadSnapshotRejectedMessage
+  // Network / peers
+  | PeerConnectedMessage
+  | PeerDisconnectedMessage
+  | NetworkConnectedMessage
+  | NetworkDisconnectedMessage
+  | NetworkVersionMismatchMessage
+  | NetworkClusterIDMismatchMessage
+  // Sync status
+  | SyncedStatusReportMessage
+  | NodeSyncedMessage
+  | NodeUnsyncedMessage
+  // Misc
+  | IgnoredHeadInitializingMessage
+  | EventLogRotatedMessage
+  // Catch-all
   | UnknownMessage;
 
 /** Client echo messages (errors, command failures). */
