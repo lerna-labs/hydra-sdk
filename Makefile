@@ -177,6 +177,14 @@ monitoring-restart: gen-prometheus-config
 monitoring-logs:
 	$(DOCKER_MONITORING) logs -ft --tail=50
 
+orchestrator-start:
+	@echo "🚀 Starting Hydra Orchestrator on port $${ORCHESTRATOR_PORT:-7000}..."
+	@cd packages/orchestrator && npx tsx src/index.ts
+
+orchestrator-dev:
+	@echo "🚀 Starting Hydra Orchestrator (dev) on port $${ORCHESTRATOR_PORT:-7000}..."
+	@cd packages/orchestrator && npx tsx watch src/index.ts
+
 hydra-start: _assert-middleware _prepare-directories check-hydra-keys check-cardano-keys check-tls-cert gen-trp-config
 	$(DOCKER_HYDRA) up -d
 

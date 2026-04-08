@@ -65,11 +65,24 @@ EOF
   echo "  ✅ ${NETWORK}/${INSTANCE} → ${DOCKER_HOST_IP}:${PORT}"
 done
 
+# Append node-exporter job (always present)
+cat >> "${OUTPUT}" <<'NODE_EXPORTER'
+
+  - job_name: 'node-exporter'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['localhost:9100']
+
+  - job_name: 'hydra-nodes-dynamic'
+    file_sd_configs:
+      - files: ['/etc/prometheus/targets.json']
+        refresh_interval: 15s
+NODE_EXPORTER
+
 if [[ ${FOUND} -eq 0 ]]; then
-  echo "⚠️  No instance .env files with MONITORING_PORT found."
+  echo "⚠️  No instance .env files with MONITORING_PORT found (node-exporter + file_sd still configured)."
   echo "   Create instances first: make NETWORK=<network> INSTANCE=<id> create-instance"
 else
   echo ""
-  echo "📊 Wrote ${OUTPUT} with ${FOUND} target(s)"
-  echo "   Restart monitoring to pick up changes: make monitoring-restart"
+  echo "📊 Wrote ${OUTPUT} with ${FOUND} static target(s) + node-exporter + file_sd_configs"
 fi
