@@ -73,6 +73,11 @@ cat >> "${OUTPUT}" <<'NODE_EXPORTER'
     static_configs:
       - targets: ['localhost:9100']
 
+  - job_name: 'cadvisor'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['localhost:8085']
+
   - job_name: 'hydra-nodes-dynamic'
     file_sd_configs:
       - files: ['/etc/prometheus/targets.json']
