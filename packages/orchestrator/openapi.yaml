@@ -1,0 +1,419 @@
+openapi: 3.1.0
+info:
+  title: Hydra Head Orchestrator API
+  description: |
+    REST API for programmatic Hydra head infrastructure provisioning.
+
+    The orchestrator handles infrastructure only — generating keys, allocating ports,
+    starting/stopping Docker containers, and monitoring host health. It does **not**
+    interact with the Hydra head protocol (no Init, Commit, Open, Decommit).
+
+    Each provisioned head runs its own middleware image (`expressImage`) which handles
+    all head operations. The caller funds the admin wallet and interacts with the
+    middleware directly.
+
+    ## Typical workflow
+
+    1. `POST /heads` — scaffold a new instance (keys, containers)
+    2. Poll `GET /heads/{id}` until `status` is `READY`
+    3. Fund the returned `adminAddress` on L1 with seed UTxOs + tokens
+    4. Interact with the middleware at `endpoints.express` (commit, open, transact)
+    5. `DELETE /heads/{id}` when done — stops containers
+
+  version: 1.0.0-beta.1
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  contact:
+    name: Adam Dean
+    email: adam@crypto2099.io
+
+servers:
+  - url: http://localhost:7000
+    description: Local development
+
+security:
+  - BearerAuth: []
+
+paths:
+  /heads:
+    post:
+      operationId: scaffoldHead
+      summary: Scaffold a new Hydra head instance
+      description: |
+        Generates keys, allocates ports, starts containers (hydra-node, TRP, middleware),
+        and returns the admin address and connection endpoints.
+
+        The request returns `202 Accepted` immediately with `status: SCAFFOLDING`.
+        Poll `GET /heads/{id}` until `status` is `READY` (typically 30-60 seconds).
+
+        Provisioning is gated by host health checks — returns `503` if the host
+        lacks capacity (CPU, memory, or instance limit).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScaffoldRequest'
+            examples:
+              basic:
+                summary: Basic scaffold
+                value:
+                  network: preprod
+                  expressImage: "ghcr.io/lerna-labs/ekklesia-hydra:branch-main"
+              named:
+                summary: Named instance with custom params
+                value:
+                  network: preprod
+                  expressImage: "ghcr.io/lerna-labs/ekklesia-hydra:branch-main"
+                  instanceName: vote-round-1
+                  contestationPeriod: 300
+                  depositPeriod: 1800
+      responses:
+        '202':
+          description: Scaffolding started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceResponse'
+        '400':
+          description: Validation error (missing fields, invalid network, invalid image, invalid name)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Instance name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Host lacks capacity to provision
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      health:
+                        $ref: '#/components/schemas/CapacityDecision'
+
+    get:
+      operationId: listHeads
+      summary: List all managed instances
+      responses:
+        '200':
+          description: Array of all instances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InstanceResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /heads/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Instance ID (the `instanceName` from scaffold, or auto-generated)
+        schema:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{1,20}$'
+
+    get:
+      operationId: getHead
+      summary: Get instance status and details
+      description: |
+        Returns the current state of a managed instance including its admin address,
+        connection endpoints, and API key.
+
+        Poll this endpoint after `POST /heads` to wait for `status: READY`.
+      responses:
+        '200':
+          description: Instance details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      operationId: teardownHead
+      summary: Stop and tear down an instance
+      description: |
+        Stops all containers (hydra-node, TRP, middleware) for the instance.
+        The env file and keys are preserved for audit purposes.
+
+        Returns the updated instance with `status: STOPPED`.
+        If already stopped, returns the current state as-is.
+      responses:
+        '200':
+          description: Instance stopped (or was already stopped)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Teardown failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      operationId: getHealth
+      summary: Host health metrics and capacity check
+      description: |
+        Returns current host CPU, memory, and disk metrics along with a
+        provisioning capacity decision. No authentication required.
+
+        Returns `200` if the host can accept new instances, `503` if not.
+      security: []
+      responses:
+        '200':
+          description: Host healthy, can provision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityDecision'
+        '503':
+          description: Host at capacity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityDecision'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Set via the `ORCHESTRATOR_API_KEY` environment variable.
+        All endpoints except `/health` require this token.
+
+  schemas:
+    ScaffoldRequest:
+      type: object
+      required:
+        - network
+        - expressImage
+      properties:
+        network:
+          type: string
+          description: Target network for the Hydra head.
+          enum: [offline, preprod, mainnet]
+          example: preprod
+        expressImage:
+          type: string
+          description: |
+            Docker image for the per-head middleware. Each head can run a different
+            image (voting app, payments app, etc.). Must match `IMAGE_ALLOWLIST_PATTERN`
+            if configured.
+          example: "ghcr.io/lerna-labs/ekklesia-hydra:branch-main"
+        instanceName:
+          type: string
+          description: |
+            Optional human-readable instance name. Auto-generated if omitted.
+            Must be lowercase alphanumeric with hyphens, 2-21 characters.
+          pattern: '^[a-z][a-z0-9-]{1,20}$'
+          example: vote-round-1
+        contestationPeriod:
+          type: integer
+          description: Contestation period for close transactions in seconds. All participants must agree.
+          default: 600
+          example: 300
+        depositPeriod:
+          type: integer
+          description: Minimum time before deadline for deposits in seconds.
+          default: 3600
+          example: 1800
+
+    InstanceResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Instance identifier.
+          example: vote-round-1
+        network:
+          type: string
+          description: Network the instance is running on.
+          example: preprod
+        status:
+          $ref: '#/components/schemas/InstanceStatus'
+        adminAddress:
+          type: string
+          nullable: true
+          description: |
+            Bech32 Cardano address for the head's admin wallet.
+            Fund this address on L1 with seed UTxOs and tokens before opening the head.
+            Null while still scaffolding.
+          example: "addr_test1qrxyz..."
+        endpoints:
+          $ref: '#/components/schemas/InstanceEndpoints'
+        apiKey:
+          type: string
+          nullable: true
+          description: |
+            The `X-API-Key` header value for authenticating with this instance's
+            Express middleware. Null while still scaffolding.
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the instance was requested.
+
+    InstanceStatus:
+      type: string
+      enum:
+        - SCAFFOLDING
+        - READY
+        - STOPPED
+        - FAILED
+      description: |
+        - `SCAFFOLDING` — Keys being generated, containers starting
+        - `READY` — All containers up, hydra-node responding, ready for use
+        - `STOPPED` — Containers torn down via DELETE
+        - `FAILED` — Provisioning or teardown failed (see error in GET response)
+
+    InstanceEndpoints:
+      type: object
+      nullable: true
+      description: Connection endpoints for the instance. Null while still scaffolding.
+      properties:
+        hydraApi:
+          type: string
+          format: uri
+          description: Hydra node HTTP API.
+          example: "http://localhost:4102"
+        hydraWs:
+          type: string
+          format: uri
+          description: Hydra node WebSocket API.
+          example: "ws://localhost:4102"
+        trp:
+          type: string
+          format: uri
+          description: Transaction Resolution Protocol endpoint.
+          example: "http://localhost:8266"
+        express:
+          type: string
+          format: uri
+          description: Per-head middleware REST API. This is where the caller interacts after funding.
+          example: "http://localhost:3102"
+        metrics:
+          type: string
+          format: uri
+          description: Prometheus metrics endpoint for this hydra-node.
+          example: "http://localhost:6102/metrics"
+
+    CapacityDecision:
+      type: object
+      properties:
+        canProvision:
+          type: boolean
+          description: Whether the host can accept a new instance.
+        reason:
+          type: string
+          description: Reason provisioning was denied (only present when `canProvision` is false).
+          example: "Instance limit reached (20/20)"
+        activeInstances:
+          type: integer
+          description: Number of currently active (SCAFFOLDING + READY) instances.
+          example: 3
+        maxInstances:
+          type: integer
+          description: Configured maximum instance limit.
+          example: 20
+        host:
+          $ref: '#/components/schemas/HostHealth'
+
+    HostHealth:
+      type: object
+      properties:
+        cpuLoadAvg1m:
+          type: number
+          description: 1-minute load average.
+          example: 2.1
+        cpuLoadAvg5m:
+          type: number
+          description: 5-minute load average.
+          example: 1.8
+        cpuCores:
+          type: integer
+          description: Number of CPU cores.
+          example: 8
+        cpuLoadRatio:
+          type: number
+          description: 1m load average divided by core count. Above `MAX_CPU_LOAD_RATIO` triggers rejection.
+          example: 0.26
+        memTotalMb:
+          type: integer
+          description: Total system memory in MB.
+          example: 32768
+        memAvailableMb:
+          type: integer
+          description: Available memory in MB. Below `MIN_MEMORY_AVAILABLE_MB` triggers rejection.
+          example: 18432
+        memUsedPercent:
+          type: number
+          description: Memory usage as a percentage.
+          example: 43.7
+        diskIopsRead:
+          type: integer
+          description: Cumulative disk read operations (snapshot from /proc/diskstats).
+          example: 120
+        diskIopsWrite:
+          type: integer
+          description: Cumulative disk write operations (snapshot from /proc/diskstats).
+          example: 85
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+          example: "Instance not found"
