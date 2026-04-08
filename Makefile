@@ -172,7 +172,7 @@ monitoring-down:
 	$(DOCKER_MONITORING) down -v
 
 monitoring-restart: gen-prometheus-config
-	$(DOCKER_MONITORING) restart
+	$(DOCKER_MONITORING) up -d --force-recreate
 
 monitoring-logs:
 	$(DOCKER_MONITORING) logs -ft --tail=50
