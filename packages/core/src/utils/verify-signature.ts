@@ -26,7 +26,7 @@ export function verifySignature(signature: string, message: string, signingAddre
     const [, , , payload1] = cbor.decode(bufferToHex(coseSign1.signed_data().to_bytes()));
     const signaturePayloadAscii = bufferToAscii(payload1);
 
-    const { words } = bech32.decode(signingAddress);
+    const { words, prefix } = bech32.decode(signingAddress);
 
     const addressBytes = Buffer.from(bech32.fromWords(words));
     const coseSigKey = cbor.decode(signatureKey);
@@ -34,7 +34,11 @@ export function verifySignature(signature: string, message: string, signingAddre
     const sigKey = CSL.PublicKey.from_bytes(cosePublicKey);
     const publicKeyHash = sigKey.hash();
 
-    const address_matches = addressBytes.toString('hex').slice(2) === publicKeyHash.to_hex();
+    // pool1... bech32 encodes the raw 28-byte key hash with no header byte.
+    // All other address types (addr, drep, stake) have a 1-byte header prefix.
+    const addressHex = addressBytes.toString('hex');
+    const address_matches =
+      prefix === 'pool' ? addressHex === publicKeyHash.to_hex() : addressHex.slice(2) === publicKeyHash.to_hex();
     const sig = CSL.Ed25519Signature.from_bytes(signatureBytes);
     const validates = sigKey.verify(coseSign1.signed_data().to_bytes(), sig);
 
