@@ -11,6 +11,22 @@ export const bufferToHex = (buffer: Uint8Array | string) => Buffer.from(buffer).
 export const bufferToAscii = (buffer: Uint8Array | string) => Buffer.from(buffer).toString('ascii');
 
 /**
+ * Character limit used for bech32 decoding. The library defaults to 90, which truncates
+ * Cardano base addresses (payment + staking) that are commonly 103+ characters. We raise
+ * the ceiling well above any realistic Cardano encoding (addr, stake, drep, pool, cc_*).
+ */
+export const BECH32_DECODE_LIMIT = 1023;
+
+/**
+ * Decode a Cardano bech32 string (addr, stake, pool, drep, cc_*) with a character
+ * limit high enough to accommodate base addresses that include a staking component.
+ */
+export function decodeBech32Address(address: string): { prefix: string; addressBytes: Buffer } {
+  const { words, prefix } = bech32.decode(address, BECH32_DECODE_LIMIT);
+  return { prefix, addressBytes: Buffer.from(bech32.fromWords(words)) };
+}
+
+/**
  * Verify a CIP-30 COSE_Sign1 signature against an expected message and address.
  *
  * @param signature - Hex-encoded COSE_Sign1 signature bytes.
@@ -26,9 +42,7 @@ export function verifySignature(signature: string, message: string, signingAddre
     const [, , , payload1] = cbor.decode(bufferToHex(coseSign1.signed_data().to_bytes()));
     const signaturePayloadAscii = bufferToAscii(payload1);
 
-    const { words, prefix } = bech32.decode(signingAddress);
-
-    const addressBytes = Buffer.from(bech32.fromWords(words));
+    const { prefix, addressBytes } = decodeBech32Address(signingAddress);
     const coseSigKey = cbor.decode(signatureKey);
     const cosePublicKey = coseSigKey.get(-2);
     const sigKey = CSL.PublicKey.from_bytes(cosePublicKey);

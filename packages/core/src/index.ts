@@ -25,5 +25,11 @@ export { getAdmin } from './mesh/get-admin.js';
 export { createMultisigAddress, createNativeScript } from './mesh/native-script.js';
 export { submitTx } from './tx3/submit-tx.js';
 export { chunkString } from './utils/chunk-string.js';
-export { bufferToAscii, bufferToHex, verifySignature } from './utils/verify-signature.js';
+export {
+  BECH32_DECODE_LIMIT,
+  bufferToAscii,
+  bufferToHex,
+  decodeBech32Address,
+  verifySignature,
+} from './utils/verify-signature.js';
 export { CommitArgs, UTxORef, Wrangler } from './wrangler.js';

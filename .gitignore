@@ -11,5 +11,6 @@ config.toml
 test/*
 packages/core/dist/*
 packages/proof/dist/*
+packages/orchestrator/dist/*
 *.tsbuildinfo
 docs/api

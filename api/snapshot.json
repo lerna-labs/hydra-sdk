@@ -2,8 +2,13 @@
   "schema": "lerna-labs/api-snapshot@v1",
   "packages": {
     "@lerna-labs/hydra-sdk": {
-      "version": "1.0.0-beta.18",
+      "version": "1.0.0-beta.26",
       "exports": [
+        {
+          "name": "BECH32_DECODE_LIMIT",
+          "kind": "const",
+          "signature": "1023"
+        },
         {
           "name": "bufferToAscii",
           "kind": "function",
@@ -22,6 +27,11 @@
         {
           "name": "CommitArgs",
           "kind": "interface",
+          "signature": "any"
+        },
+        {
+          "name": "ConfirmedSnapshot",
+          "kind": "type",
           "signature": "any"
         },
         {
@@ -45,6 +55,11 @@
           "signature": "(address: string, opts?: { invalidHereafter?: number; networkId?: number; }) => { address: string; scriptCbor?: string; scriptHash?: string; }"
         },
         {
+          "name": "decodeBech32Address",
+          "kind": "function",
+          "signature": "(address: string) => { prefix: string; addressBytes: Buffer; }"
+        },
+        {
           "name": "DiskCache",
           "kind": "type",
           "signature": "any"
@@ -62,7 +77,7 @@
         {
           "name": "getUtxoSet",
           "kind": "function",
-          "signature": "() => Promise<ParsedUtxo[]>"
+          "signature": "(options?: UtxoQueryOptions) => Promise<ParsedUtxo[]>"
         },
         {
           "name": "HeadStatus",
@@ -70,8 +85,165 @@
           "signature": "any"
         },
         {
+          "name": "HydraHeadInfo",
+          "kind": "interface",
+          "signature": "any"
+        },
+        {
           "name": "HydraMessage",
           "kind": "type",
+          "signature": "any"
+        },
+        {
+          "name": "HydraMonitor",
+          "kind": "class",
+          "signature": "typeof HydraMonitor",
+          "members": [
+            {
+              "name": "__@captureRejectionSymbol@168",
+              "kind": "method",
+              "signature": "<K>(error: Error, event: string | symbol, ...args: AnyRest) => void"
+            },
+            {
+              "name": "addListener",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol, listener: (...args: any[]) => void) => import(\"/home/adam/lerna-labs/hydra-sdk/packages/core/dist/index\").HydraMonitor"
+            },
+            {
+              "name": "connected",
+              "kind": "property",
+              "signature": "boolean"
+            },
+            {
+              "name": "emit",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol, ...args: AnyRest) => boolean"
+            },
+            {
+              "name": "eventNames",
+              "kind": "method",
+              "signature": "() => (string | symbol)[]"
+            },
+            {
+              "name": "getMaxListeners",
+              "kind": "method",
+              "signature": "() => number"
+            },
+            {
+              "name": "greetings",
+              "kind": "property",
+              "signature": "GreetingsMessage"
+            },
+            {
+              "name": "headInfo",
+              "kind": "property",
+              "signature": "HydraHeadInfo"
+            },
+            {
+              "name": "headStatus",
+              "kind": "property",
+              "signature": "HydraStatus"
+            },
+            {
+              "name": "headStatusMixed",
+              "kind": "property",
+              "signature": "HeadStatus"
+            },
+            {
+              "name": "listenerCount",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol, listener?: Function) => number"
+            },
+            {
+              "name": "listeners",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol) => Function[]"
+            },
+            {
+              "name": "off",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol, listener: (...args: any[]) => void) => import(\"/home/adam/lerna-labs/hydra-sdk/packages/core/dist/index\").HydraMonitor"
+            },
+            {
+              "name": "on",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol, listener: (...args: any[]) => void) => import(\"/home/adam/lerna-labs/hydra-sdk/packages/core/dist/index\").HydraMonitor"
+            },
+            {
+              "name": "once",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol, listener: (...args: any[]) => void) => import(\"/home/adam/lerna-labs/hydra-sdk/packages/core/dist/index\").HydraMonitor"
+            },
+            {
+              "name": "prependListener",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol, listener: (...args: any[]) => void) => import(\"/home/adam/lerna-labs/hydra-sdk/packages/core/dist/index\").HydraMonitor"
+            },
+            {
+              "name": "prependOnceListener",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol, listener: (...args: any[]) => void) => import(\"/home/adam/lerna-labs/hydra-sdk/packages/core/dist/index\").HydraMonitor"
+            },
+            {
+              "name": "rawListeners",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol) => Function[]"
+            },
+            {
+              "name": "recentEvents",
+              "kind": "property",
+              "signature": "readonly TimestampedEvent[]"
+            },
+            {
+              "name": "removeAllListeners",
+              "kind": "method",
+              "signature": "(eventName?: string | symbol) => import(\"/home/adam/lerna-labs/hydra-sdk/packages/core/dist/index\").HydraMonitor"
+            },
+            {
+              "name": "removeListener",
+              "kind": "method",
+              "signature": "<K>(eventName: string | symbol, listener: (...args: any[]) => void) => import(\"/home/adam/lerna-labs/hydra-sdk/packages/core/dist/index\").HydraMonitor"
+            },
+            {
+              "name": "setMaxListeners",
+              "kind": "method",
+              "signature": "(n: number) => import(\"/home/adam/lerna-labs/hydra-sdk/packages/core/dist/index\").HydraMonitor"
+            },
+            {
+              "name": "start",
+              "kind": "method",
+              "signature": "() => Promise<void>"
+            },
+            {
+              "name": "stop",
+              "kind": "method",
+              "signature": "() => Promise<void>"
+            },
+            {
+              "name": "waitForMessage",
+              "kind": "method",
+              "signature": "<T extends ServerOutput[\"tag\"]>(tag: T, timeoutMs?: number) => Promise<HydraMessage<T>>"
+            },
+            {
+              "name": "waitForStatus",
+              "kind": "method",
+              "signature": "(target: HydraStatus, timeoutMs?: number) => Promise<void>"
+            },
+            {
+              "name": "ws",
+              "kind": "property",
+              "signature": "HydraWebSocket"
+            }
+          ]
+        },
+        {
+          "name": "HydraMonitorOptions",
+          "kind": "interface",
+          "signature": "any"
+        },
+        {
+          "name": "HydraSnapshot",
+          "kind": "interface",
           "signature": "any"
         },
         {
@@ -127,7 +299,7 @@
         {
           "name": "queryUtxoByAddress",
           "kind": "function",
-          "signature": "(address: string) => Promise<ParsedUtxo[]>"
+          "signature": "(address: string, options?: UtxoQueryOptions) => Promise<ParsedUtxo[]>"
         },
         {
           "name": "requireEnv",
@@ -143,6 +315,16 @@
           "name": "submitTx",
           "kind": "function",
           "signature": "(submit_endpoint: string, payload: string, id: string) => Promise<Response>"
+        },
+        {
+          "name": "TimestampedEvent",
+          "kind": "interface",
+          "signature": "any"
+        },
+        {
+          "name": "UtxoQueryOptions",
+          "kind": "interface",
+          "signature": "any"
         },
         {
           "name": "UTxORef",
