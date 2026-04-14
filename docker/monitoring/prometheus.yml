@@ -22,3 +22,23 @@ scrape_configs:
     #     labels:
     #       network: 'preprod'
     #       instance: 'alpha'
+
+  - job_name: 'node-exporter'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['localhost:9100']
+
+  - job_name: 'cadvisor'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['localhost:8085']
+
+  - job_name: 'ipfs'
+    metrics_path: /debug/metrics/prometheus
+    static_configs:
+      - targets: ['localhost:5001']
+
+  - job_name: 'hydra-nodes-dynamic'
+    file_sd_configs:
+      - files: ['/etc/prometheus/targets.json']
+        refresh_interval: 15s

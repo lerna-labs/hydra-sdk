@@ -1,3 +1,17 @@
+# IPFS (Kubo) node.
+#
+# Local access: WebUI at http://127.0.0.1:${IPFS_API_PORT:-5001}/webui works out of the box.
+#
+# Remote access: Kubo's RPC rejects cross-origin browser requests by default. To allow
+# a WebUI served from another host to talk to this RPC, set CORS headers on the node:
+#
+#   docker exec ipfs-node ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin \
+#     '["https://your-remote-host","http://127.0.0.1:5001"]'
+#   docker exec ipfs-node ipfs config --json API.HTTPHeaders.Access-Control-Allow-Methods \
+#     '["PUT","POST","GET"]'
+#   docker restart ipfs-node
+#
+# Never set Allow-Origin to "*" on an exposed RPC — it is an admin API with no auth.
 services:
   ipfs-node:
     container_name: ipfs-node
@@ -6,6 +20,11 @@ services:
     ports:
       - "${IPFS_API_PORT:-5001}:5001"
       - "${IPFS_GATEWAY_PORT:-8080}:8080"
+      # Swarm — must be reachable from the public internet for DHT providers
+      # to serve content. Without these, your node will appear in findprovs
+      # results but peers will fail to dial it.
+      - "${IPFS_SWARM_PORT:-4001}:4001/tcp"
+      - "${IPFS_SWARM_PORT:-4001}:4001/udp"
     volumes:
       - "${IPFS_DATA_DIR:-./data/ipfs}/data:/data/ipfs"
       - "${IPFS_DATA_DIR:-./data/ipfs}/staging:/export"

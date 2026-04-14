@@ -1,0 +1,200 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "Node Up",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        { "expr": "up{job=\"ipfs\"}", "legendFormat": "IPFS" }
+      ]
+    },
+    {
+      "title": "Connected Peers",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 4, "w": 5, "x": 4, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "green", "value": 20 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto" },
+      "targets": [
+        { "expr": "sum(libp2p_swarm_connections_opened_total{job=\"ipfs\"}) - sum(libp2p_swarm_connections_closed_total{job=\"ipfs\"})", "legendFormat": "peers" }
+      ]
+    },
+    {
+      "title": "Resource Manager Connections",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 4, "w": 5, "x": 9, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "expr": "sum by (dir) (libp2p_rcmgr_connections{job=\"ipfs\", scope=\"system\"})", "legendFormat": "{{dir}}" }
+      ]
+    },
+    {
+      "title": "Repo Size",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 4, "w": 5, "x": 14, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "options": { "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "expr": "ipfs_fsrepo_datastore_disk_usage_bytes{job=\"ipfs\"}", "legendFormat": "repo" }
+      ]
+    },
+    {
+      "title": "Goroutines",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "expr": "go_goroutines{job=\"ipfs\"}", "legendFormat": "goroutines" }
+      ]
+    },
+    {
+      "title": "Peer Connections (Opened vs Closed rate)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "cps"
+        }
+      },
+      "targets": [
+        { "expr": "sum(rate(libp2p_swarm_connections_opened_total{job=\"ipfs\"}[5m]))", "legendFormat": "opened" },
+        { "expr": "sum(rate(libp2p_swarm_connections_closed_total{job=\"ipfs\"}[5m]))", "legendFormat": "closed" }
+      ]
+    },
+    {
+      "title": "Bitswap Bandwidth",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 1, "stacking": { "mode": "none" } },
+          "unit": "Bps"
+        }
+      },
+      "targets": [
+        { "expr": "rate(ipfs_bitswap_recv_all_blk_bytes{job=\"ipfs\"}[5m])", "legendFormat": "received" },
+        { "expr": "rate(ipfs_bitswap_sent_all_blk_bytes{job=\"ipfs\"}[5m])", "legendFormat": "sent" },
+        { "expr": "rate(ipfs_bitswap_recv_dup_blk_bytes{job=\"ipfs\"}[5m])", "legendFormat": "received (dup)" }
+      ]
+    },
+    {
+      "title": "Bitswap Blocks",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "ops"
+        }
+      },
+      "targets": [
+        { "expr": "rate(ipfs_bitswap_blks_received{job=\"ipfs\"}[5m])", "legendFormat": "blocks received" },
+        { "expr": "rate(ipfs_bitswap_blks_sent{job=\"ipfs\"}[5m])", "legendFormat": "blocks sent" },
+        { "expr": "rate(ipfs_bitswap_dup_blks_received{job=\"ipfs\"}[5m])", "legendFormat": "duplicate blocks" }
+      ]
+    },
+    {
+      "title": "Resource Manager Streams",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "short"
+        }
+      },
+      "targets": [
+        { "expr": "sum by (dir) (libp2p_rcmgr_streams{job=\"ipfs\", scope=\"system\"})", "legendFormat": "streams {{dir}}" }
+      ]
+    },
+    {
+      "title": "Process Memory (RSS)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 1 },
+          "unit": "bytes"
+        }
+      },
+      "targets": [
+        { "expr": "process_resident_memory_bytes{job=\"ipfs\"}", "legendFormat": "rss" },
+        { "expr": "process_virtual_memory_bytes{job=\"ipfs\"}", "legendFormat": "virtual" },
+        { "expr": "go_memstats_heap_alloc_bytes{job=\"ipfs\"}", "legendFormat": "go heap alloc" }
+      ]
+    },
+    {
+      "title": "Process CPU",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 },
+          "unit": "percentunit"
+        }
+      },
+      "targets": [
+        { "expr": "rate(process_cpu_seconds_total{job=\"ipfs\"}[5m])", "legendFormat": "cpu" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["ipfs", "kubo"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "IPFS Node",
+  "uid": "ipfs-node-dashboard"
+}

@@ -78,6 +78,11 @@ cat >> "${OUTPUT}" <<'NODE_EXPORTER'
     static_configs:
       - targets: ['localhost:8085']
 
+  - job_name: 'ipfs'
+    metrics_path: /debug/metrics/prometheus
+    static_configs:
+      - targets: ['localhost:5001']
+
   - job_name: 'hydra-nodes-dynamic'
     file_sd_configs:
       - files: ['/etc/prometheus/targets.json']
@@ -89,5 +94,5 @@ if [[ ${FOUND} -eq 0 ]]; then
   echo "   Create instances first: make NETWORK=<network> INSTANCE=<id> create-instance"
 else
   echo ""
-  echo "📊 Wrote ${OUTPUT} with ${FOUND} static target(s) + node-exporter + file_sd_configs"
+  echo "📊 Wrote ${OUTPUT} with ${FOUND} static target(s) + node-exporter + cadvisor + ipfs + file_sd_configs"
 fi
