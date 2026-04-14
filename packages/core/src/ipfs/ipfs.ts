@@ -53,15 +53,29 @@ export function createIpfsClient(config: IpfsConfig) {
    * @returns The CID of the wrapping IPFS directory.
    */
   async function pinDirectory(dirPath: string): Promise<PinResult> {
-    const entries = await fs.readdir(dirPath);
     const form = new FormData();
 
-    for (const entry of entries) {
-      const filePath = path.join(dirPath, entry);
-      const stat = await fs.stat(filePath);
-      if (!stat.isFile()) continue;
-      const content = await fs.readFile(filePath, 'utf-8');
-      form.append('file', new Blob([content]), entry);
+    const collectFiles = async (rel: string): Promise<string[]> => {
+      const out: string[] = [];
+      const dirents = await fs.readdir(path.join(dirPath, rel), { withFileTypes: true });
+      for (const dirent of dirents) {
+        const childRel = path.join(rel, dirent.name);
+        if (dirent.isDirectory()) {
+          out.push(...(await collectFiles(childRel)));
+        } else if (dirent.isFile()) {
+          out.push(childRel);
+        }
+      }
+      return out;
+    };
+
+    for (const relPath of await collectFiles('')) {
+      const buf = await fs.readFile(path.join(dirPath, relPath));
+      const content = new Uint8Array(buf).slice().buffer;
+      // Kubo reconstructs the directory tree from entry names — always
+      // use POSIX separators so Windows callers get the same CID.
+      const entryName = relPath.split(path.sep).join('/');
+      form.append('file', new Blob([content]), entryName);
     }
 
     const res = await fetch(`${apiUrl}/api/v0/add?pin=true&wrap-with-directory=true&recursive=true`, {
