@@ -160,4 +160,25 @@ describe('Provisioner', () => {
     expect(prov.instanceEnvExists('preprod', 'alpha')).toBe(true);
     expect(prov.instanceEnvExists('preprod', 'beta')).toBe(false);
   });
+
+  it('purges env file and data dir', async () => {
+    const { existsSync } = await import('node:fs');
+    const envPath = join(root, '.preprod.alpha.env');
+    const dataDir = join(root, 'data', 'preprod', 'instances', 'alpha');
+    const keysDir = join(dataDir, 'keys');
+    mkdirSync(keysDir, { recursive: true });
+    writeFileSync(envPath, 'INSTANCE=alpha\n');
+    writeFileSync(join(keysDir, 'alpha.cardano.addr'), 'addr_test1xyz');
+
+    const prov = new Provisioner(makeConfig(root));
+    prov.purgeInstance('preprod', 'alpha');
+
+    expect(existsSync(envPath)).toBe(false);
+    expect(existsSync(dataDir)).toBe(false);
+  });
+
+  it('purge is idempotent on missing files', () => {
+    const prov = new Provisioner(makeConfig(root));
+    expect(() => prov.purgeInstance('preprod', 'ghost')).not.toThrow();
+  });
 });

@@ -126,7 +126,7 @@ export function createHeadsRouter(
     res.json(toResponse(inst));
   });
 
-  // DELETE /heads/:id — teardown
+  // DELETE /heads/:id — teardown (soft) or full wipe (purge=true)
   router.delete('/:id', async (req, res) => {
     const inst = registry.get(req.params.id);
     if (!inst) {
@@ -134,22 +134,38 @@ export function createHeadsRouter(
       return;
     }
 
-    if (inst.status === 'STOPPED') {
+    const purge = req.query.purge === 'true';
+
+    if (inst.status === 'STOPPED' && !purge) {
       res.json(toResponse(inst));
       return;
     }
 
     try {
-      audit.log('teardown_requested', { id: inst.id, network: inst.network });
-      await provisioner.stopContainers(inst.network, inst.id);
+      audit.log(purge ? 'purge_requested' : 'teardown_requested', { id: inst.id, network: inst.network });
+
+      if (inst.status !== 'STOPPED') {
+        await provisioner.stopContainers(inst.network, inst.id);
+      }
+
+      if (purge) {
+        provisioner.purgeInstance(inst.network, inst.id);
+        registry.remove(inst.id);
+        promSD.write();
+        audit.log('purge_completed', { id: inst.id });
+        res.json({ id: inst.id, status: 'PURGED' });
+        return;
+      }
+
       const updated = registry.update(inst.id, { status: 'STOPPED', stoppedAt: new Date().toISOString() });
       promSD.write();
       audit.log('teardown_completed', { id: inst.id });
       res.json(toResponse(updated));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      registry.update(inst.id, { status: 'FAILED', error: `Teardown failed: ${msg}` });
-      res.status(500).json({ error: `Teardown failed: ${msg}` });
+      const action = purge ? 'Purge' : 'Teardown';
+      registry.update(inst.id, { status: 'FAILED', error: `${action} failed: ${msg}` });
+      res.status(500).json({ error: `${action} failed: ${msg}` });
     }
   });
 

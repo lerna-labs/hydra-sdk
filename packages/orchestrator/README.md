@@ -111,8 +111,17 @@ Send funds to `adminAddress` on L1, then interact with the middleware at `endpoi
 
 ### 6. Tear down
 
+**Soft teardown** — stops containers, preserves env file, keys, and the registry entry (for audit). Instance name is not reusable afterwards.
+
 ```bash
 curl -X DELETE http://localhost:7000/heads/vote-round-1 \
+  -H "Authorization: Bearer <your-api-key>"
+```
+
+**Full purge** — stops containers, removes the env file, deletes `data/{network}/instances/{id}/`, and removes the registry entry. Instance name becomes reusable.
+
+```bash
+curl -X DELETE "http://localhost:7000/heads/vote-round-1?purge=true" \
   -H "Authorization: Bearer <your-api-key>"
 ```
 

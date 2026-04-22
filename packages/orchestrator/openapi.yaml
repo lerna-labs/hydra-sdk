@@ -168,17 +168,43 @@ paths:
       summary: Stop and tear down an instance
       description: |
         Stops all containers (hydra-node, TRP, middleware) for the instance.
-        The env file and keys are preserved for audit purposes.
 
-        Returns the updated instance with `status: STOPPED`.
-        If already stopped, returns the current state as-is.
+        By default (soft teardown) the env file, keys, and registry entry are
+        preserved for audit — the instance transitions to `status: STOPPED` and
+        stays in the registry. Pass `purge=true` to also delete the instance
+        env file, the `data/{network}/instances/{id}/` directory, and remove
+        the registry entry. The instance name becomes reusable afterwards.
+
+        Returns the updated instance on soft teardown, or `{id, status: "PURGED"}`
+        on purge. If the instance is already `STOPPED`, a subsequent soft
+        teardown returns its current state unchanged; a purge proceeds normally.
+      parameters:
+        - name: purge
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['true']
+          description: |
+            When `true`, fully wipe the instance — env file, data directory,
+            and registry entry are all removed. The instance name becomes
+            reusable on subsequent POST /heads calls.
       responses:
         '200':
-          description: Instance stopped (or was already stopped)
+          description: Instance stopped or purged
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InstanceResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/InstanceResponse'
+                  - type: object
+                    required: [id, status]
+                    properties:
+                      id:
+                        type: string
+                      status:
+                        type: string
+                        enum: [PURGED]
         '401':
           description: Unauthorized
           content:

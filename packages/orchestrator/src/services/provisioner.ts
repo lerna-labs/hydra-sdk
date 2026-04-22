@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { OrchestratorConfig } from '../config.js';
 import type { ParsedInstanceEnv } from '../types.js';
@@ -58,6 +58,17 @@ export class Provisioner {
    */
   async stopContainers(network: string, instance: string): Promise<void> {
     await this.make(network, instance, 'hydra-down');
+  }
+
+  /**
+   * Remove the instance env file and data directory.
+   * Idempotent — safe on instances whose files were never created or were already removed.
+   */
+  purgeInstance(network: string, instance: string): void {
+    const envPath = this.instanceEnvPath(network, instance);
+    const dataDir = join(this.config.projectRoot, 'data', network, 'instances', instance);
+    rmSync(envPath, { force: true });
+    rmSync(dataDir, { recursive: true, force: true });
   }
 
   /** Parse the generated instance env file for allocated ports and API key. */
