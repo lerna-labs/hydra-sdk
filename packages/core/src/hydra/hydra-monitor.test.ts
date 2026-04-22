@@ -255,6 +255,49 @@ describe('HydraMonitor', () => {
       expect(info!.chainSyncedStatus).toBeNull();
       expect(info!.currentSlot).toBeNull();
     });
+
+    it('reflects live headStatus across transition messages', async () => {
+      await monitor.start();
+      expect(monitor.headInfo!.headStatus).toBe('Idle');
+
+      emitWsMessage({ tag: 'HeadIsInitializing', headId: 'new-head-abc', parties: [] });
+      expect(monitor.headInfo!.headStatus).toBe('Initializing');
+
+      emitWsMessage({ tag: 'HeadIsOpen', headId: 'new-head-abc', utxo: {} });
+      expect(monitor.headInfo!.headStatus).toBe('Open');
+
+      emitWsMessage({ tag: 'HeadIsClosed', headId: 'new-head-abc' });
+      expect(monitor.headInfo!.headStatus).toBe('Closed');
+
+      emitWsMessage({ tag: 'ReadyToFanout', headId: 'new-head-abc' });
+      expect(monitor.headInfo!.headStatus).toBe('FanoutPossible');
+
+      emitWsMessage({ tag: 'HeadIsFinalized', headId: 'new-head-abc', utxo: {} });
+      expect(monitor.headInfo!.headStatus).toBe('Final');
+    });
+
+    it('tracks headId from HeadIsInitializing when Greetings lacks it', async () => {
+      mockWs.lastGreetings = {
+        tag: 'Greetings',
+        headStatus: 'Idle',
+        me: { vkey: 'xyz' },
+      } as HydraWsMessage;
+      await monitor.start();
+      expect(monitor.headInfo!.headId).toBeNull();
+
+      emitWsMessage({ tag: 'HeadIsInitializing', headId: 'fresh-head-id', parties: [] });
+      expect(monitor.headInfo!.headId).toBe('fresh-head-id');
+    });
+
+    it('clears headId on HeadIsAborted', async () => {
+      await monitor.start();
+      emitWsMessage({ tag: 'HeadIsInitializing', headId: 'head-to-abort', parties: [] });
+      expect(monitor.headInfo!.headId).toBe('head-to-abort');
+
+      emitWsMessage({ tag: 'HeadIsAborted', headId: 'head-to-abort', utxo: {} });
+      expect(monitor.headInfo!.headStatus).toBe('Idle');
+      expect(monitor.headInfo!.headId).toBeNull();
+    });
   });
 
   // ── Status Events ──────────────────────────────────────────────────

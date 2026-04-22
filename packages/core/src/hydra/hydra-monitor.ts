@@ -50,6 +50,7 @@ export class HydraMonitor extends EventEmitter {
   public readonly ws: HydraWebSocket;
   private _headStatus: HydraStatus = 'IDLE';
   private _previousStatus: HydraStatus = 'IDLE';
+  private _headId: string | null = null;
   private _events: TimestampedEvent[] = [];
   private _stopped = true;
   private _reconnecting = false;
@@ -118,7 +119,14 @@ export class HydraMonitor extends EventEmitter {
   }
 
   /**
-   * Summary of Hydra head info extracted from the last Greetings.
+   * Summary of Hydra head info derived from live state plus the last Greetings.
+   *
+   * `headStatus` and `headId` reflect the current state tracked from transition
+   * messages (`HeadIsInitializing`, `HeadIsOpen`, etc.), not the snapshot taken
+   * at connection time. The remaining fields (node version, participants,
+   * contestation period, network info) come from the cached Greetings since
+   * they are static for the life of the head.
+   *
    * Excludes the full UTxO snapshot to keep payloads small.
    * Returns `null` if no Greetings has been received yet.
    */
@@ -130,8 +138,8 @@ export class HydraMonitor extends EventEmitter {
     const peerCount = peers ? peers.split(',').filter(Boolean).length : 0;
 
     return {
-      headStatus: g.headStatus,
-      headId: g.hydraHeadId ?? null,
+      headStatus: HYDRA_TO_HEAD_STATUS[this._headStatus],
+      headId: this._headId,
       nodeVersion: g.hydraNodeVersion ?? null,
       me: g.me.vkey,
       contestationPeriod: g.env?.contestationPeriod ?? null,
@@ -213,11 +221,21 @@ export class HydraMonitor extends EventEmitter {
     if (msg.tag === 'Greetings' && 'headStatus' in msg) {
       const mapped = HEAD_STATUS_TO_HYDRA[msg.headStatus as HeadStatus];
       if (mapped) this.updateStatus(mapped);
+      const greetingHeadId = (msg as { hydraHeadId?: string }).hydraHeadId;
+      if (greetingHeadId) this._headId = greetingHeadId;
     } else if (msg.tag === 'HeadIsAborted') {
       this.updateStatus('IDLE');
+      this._headId = null;
     } else {
       const mapped = TAG_TO_HYDRA[msg.tag];
       if (mapped) this.updateStatus(mapped);
+      // Track headId from transition messages (Greetings may not include
+      // it for a fresh node — HeadIsInitializing is the first place it
+      // reliably appears). Skipped for HeadIsAborted, which clears it above.
+      const msgHeadId = (msg as { headId?: unknown }).headId;
+      if (typeof msgHeadId === 'string' && msgHeadId) {
+        this._headId = msgHeadId;
+      }
     }
 
     // Error routing

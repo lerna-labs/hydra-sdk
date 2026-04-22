@@ -1,6 +1,6 @@
 import './load.js';
 
-import { optionalEnv, requireEnv, Wrangler } from '@lerna-labs/hydra-sdk';
+import { HydraMonitor, optionalEnv, requireEnv } from '@lerna-labs/hydra-sdk';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import express from 'express';
@@ -35,6 +35,21 @@ app.use(authHeaderMiddleware);
 const port = optionalEnv('EXPRESS_PORT', '3000');
 // biome-ignore lint/correctness/noUnusedVariables: fail-fast validation that TRP_URL is set at startup
 const TRP_URL = requireEnv('TRP_URL');
+const HYDRA_WS_URL = requireEnv('HYDRA_WS_URL');
+
+// Long-lived WebSocket monitor: tracks head state transitions continuously
+// so /health and /head-info always reflect the latest status without opening
+// a new WS per request.
+const monitor = new HydraMonitor({ wsUrl: HYDRA_WS_URL });
+monitor.on('status', (status, previous) => {
+  console.log(`[hydra] head status: ${previous} → ${status}`);
+});
+monitor.on('connected', () => console.log('[hydra] monitor connected'));
+monitor.on('disconnected', () => console.log('[hydra] monitor disconnected'));
+monitor.on('reconnecting', (attempt: number, delayMs: number) => {
+  console.log(`[hydra] reconnecting in ${delayMs}ms (attempt ${attempt})`);
+});
+monitor.on('reconnect_failed', () => console.error('[hydra] monitor reconnect failed'));
 
 // ── Routes ──────────────────────────────────────────────────────────
 
@@ -42,15 +57,22 @@ app.get('/', (_, res) => {
   res.send('Hydra Notary API is running');
 });
 
-app.get('/health', async (_, res) => {
-  const wrangler = new Wrangler(process.env.HYDRA_API_URL, process.env.HYDRA_WS_URL);
-  try {
-    const status = await wrangler.getHeadStatus(5000);
-    return res.json({ status });
-  } catch (e: any) {
-    console.error('Health check failed:', e);
-    return res.json({ status: 'ERROR', message: 'Could not connect to Hydra node!' });
+app.get('/health', (_, res) => {
+  if (!monitor.connected) {
+    return res.status(503).json({ status: 'DISCONNECTED', message: 'Hydra WebSocket is not connected' });
   }
+  return res.json({ status: monitor.headStatusMixed });
+});
+
+app.get('/head-info', (_, res) => {
+  if (!monitor.connected) {
+    return res.status(503).json({ error: 'Hydra WebSocket is not connected' });
+  }
+  const info = monitor.headInfo;
+  if (!info) {
+    return res.status(503).json({ error: 'Awaiting Greetings from Hydra node' });
+  }
+  return res.json(info);
 });
 
 /**
@@ -217,6 +239,10 @@ async function boot() {
   if (count > 0) {
     console.log(`Rehydrated ${count} entries from disk`);
   }
+
+  // Fire and forget — the monitor reconnects on its own and /health
+  // reports DISCONNECTED until the WS handshake completes.
+  monitor.start().catch((err) => console.error('[hydra] monitor start failed:', err));
 
   app.listen(port, () => {
     console.log(`Hydra Notary API is running on http://localhost:${port}`);
