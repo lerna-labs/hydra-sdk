@@ -20,6 +20,8 @@ endif
 # blank export exports all environment variables for use in other commands
 export
 export DOCKER_BUILDKIT := 1
+HOST_UID := $(shell id -u)
+HOST_GID := $(shell id -g)
 
 # ── Directory Layout ─────────────────────────────────────────────────
 #

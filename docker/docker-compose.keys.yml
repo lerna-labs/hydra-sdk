@@ -1,4 +1,5 @@
 x-keys: &keys
+  user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
   volumes:
     - "../data/${NETWORK}/instances/${INSTANCE}/keys:/keys"
   working_dir: /keys
