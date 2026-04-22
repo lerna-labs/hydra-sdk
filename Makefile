@@ -199,6 +199,14 @@ hydra-down: _assert-middleware
 hydra-clean: _assert-middleware
 	$(DOCKER_HYDRA) down --remove-orphans
 
+purge-instance-data: _guard-network _guard-instance
+	@if [ -z "$(strip $(INSTANCE))" ]; then echo "❌ INSTANCE must be non-empty"; exit 1; fi
+	@echo "🧹 Wiping data/$(NETWORK)/instances/$(INSTANCE) via container (removes root-owned files)..."
+	@docker run --rm \
+	  -v "$(CURDIR)/data/$(NETWORK)/instances:/instances" \
+	  busybox:latest \
+	  sh -c "rm -rf /instances/$(INSTANCE)"
+
 hydra-restart: _assert-middleware
 	$(MAKE) hydra-stop && $(MAKE) hydra-start
 

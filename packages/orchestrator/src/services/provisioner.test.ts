@@ -161,24 +161,26 @@ describe('Provisioner', () => {
     expect(prov.instanceEnvExists('preprod', 'beta')).toBe(false);
   });
 
-  it('purges env file and data dir', async () => {
+  it('purges env file and shells out to make purge-instance-data', async () => {
+    const { execFile } = await import('node:child_process');
     const { existsSync } = await import('node:fs');
     const envPath = join(root, '.preprod.alpha.env');
-    const dataDir = join(root, 'data', 'preprod', 'instances', 'alpha');
-    const keysDir = join(dataDir, 'keys');
-    mkdirSync(keysDir, { recursive: true });
     writeFileSync(envPath, 'INSTANCE=alpha\n');
-    writeFileSync(join(keysDir, 'alpha.cardano.addr'), 'addr_test1xyz');
 
     const prov = new Provisioner(makeConfig(root));
-    prov.purgeInstance('preprod', 'alpha');
+    await prov.purgeInstance('preprod', 'alpha');
 
     expect(existsSync(envPath)).toBe(false);
-    expect(existsSync(dataDir)).toBe(false);
+    expect(execFile).toHaveBeenCalledWith(
+      'make',
+      ['NETWORK=preprod', 'INSTANCE=alpha', 'purge-instance-data'],
+      expect.objectContaining({ cwd: root }),
+      expect.any(Function),
+    );
   });
 
-  it('purge is idempotent on missing files', () => {
+  it('purge is idempotent when env file is missing', async () => {
     const prov = new Provisioner(makeConfig(root));
-    expect(() => prov.purgeInstance('preprod', 'ghost')).not.toThrow();
+    await expect(prov.purgeInstance('preprod', 'ghost')).resolves.toBeUndefined();
   });
 });

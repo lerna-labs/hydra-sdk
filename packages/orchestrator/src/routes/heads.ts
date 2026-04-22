@@ -149,7 +149,7 @@ export function createHeadsRouter(
       }
 
       if (purge) {
-        provisioner.purgeInstance(inst.network, inst.id);
+        await provisioner.purgeInstance(inst.network, inst.id);
         registry.remove(inst.id);
         promSD.write();
         audit.log('purge_completed', { id: inst.id });

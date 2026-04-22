@@ -62,13 +62,15 @@ export class Provisioner {
 
   /**
    * Remove the instance env file and data directory.
+   * The env file is host-owned so `rmSync` handles it directly; the data directory
+   * typically contains files written as root by the hydra-node/etcd containers, so
+   * a short-lived container removes it for us (see `make purge-instance-data`).
    * Idempotent — safe on instances whose files were never created or were already removed.
    */
-  purgeInstance(network: string, instance: string): void {
+  async purgeInstance(network: string, instance: string): Promise<void> {
     const envPath = this.instanceEnvPath(network, instance);
-    const dataDir = join(this.config.projectRoot, 'data', network, 'instances', instance);
     rmSync(envPath, { force: true });
-    rmSync(dataDir, { recursive: true, force: true });
+    await this.make(network, instance, 'purge-instance-data');
   }
 
   /** Parse the generated instance env file for allocated ports and API key. */
