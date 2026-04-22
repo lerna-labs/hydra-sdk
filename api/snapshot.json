@@ -2,7 +2,7 @@
   "schema": "lerna-labs/api-snapshot@v1",
   "packages": {
     "@lerna-labs/hydra-sdk": {
-      "version": "1.0.0-beta.28",
+      "version": "1.0.0-beta.29",
       "exports": [
         {
           "name": "BECH32_DECODE_LIMIT",
