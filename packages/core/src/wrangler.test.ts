@@ -340,6 +340,46 @@ describe('Wrangler', () => {
 
       await expect(p).resolves.toBeUndefined();
     });
+
+    it('resolves immediately on Greetings with Open status (steady-state)', async () => {
+      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+      await flushAsync();
+
+      emitMessage({ tag: 'Greetings', headStatus: 'Open' as HeadStatus });
+
+      await expect(p).resolves.toBeUndefined();
+      // Must not try to drive the lifecycle forward — no Init send
+      expect(mockWs.send).not.toHaveBeenCalledWith({ tag: 'Init' });
+    });
+
+    it('resolves immediately when Greetings is replayed with Open status', async () => {
+      // Simulate a prior-connection Greetings replay via lastGreetings
+      (mockWs as unknown as { lastGreetings: unknown }).lastGreetings = {
+        tag: 'Greetings',
+        headStatus: 'Open',
+      };
+
+      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+
+      await expect(p).resolves.toBeUndefined();
+
+      (mockWs as unknown as { lastGreetings: unknown }).lastGreetings = undefined;
+    });
+
+    it.each([
+      'Closed',
+      'FanoutPossible',
+      'Final',
+    ] as const)('rejects fast on Greetings with terminal status %s', async (status) => {
+      const p = wrangler.waitForHeadOpen(commitArgs, 600_000).catch((e) => e);
+      await flushAsync();
+
+      emitMessage({ tag: 'Greetings', headStatus: status as HeadStatus });
+
+      const err = await p;
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toMatch(`head is "${status}"`);
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -411,6 +451,45 @@ describe('Wrangler', () => {
       vi.advanceTimersByTime(2000);
 
       await expect(p).rejects.toThrow('Timeout waiting for head to close!');
+    });
+
+    it.each([
+      'Closed',
+      'Final',
+    ] as const)('resolves immediately on Greetings with %s status (steady-state)', async (status) => {
+      const p = wrangler.waitForHeadClose(10000);
+      await flushAsync();
+
+      emitMessage({ tag: 'Greetings', headStatus: status as HeadStatus });
+
+      await expect(p).resolves.toBeUndefined();
+      // Must not try to drive the lifecycle forward
+      expect(mockWs.send).not.toHaveBeenCalledWith({ tag: 'Close' });
+      expect(mockWs.send).not.toHaveBeenCalledWith({ tag: 'Fanout' });
+    });
+
+    it('resolves immediately when Greetings is replayed with Closed status', async () => {
+      (mockWs as unknown as { lastGreetings: unknown }).lastGreetings = {
+        tag: 'Greetings',
+        headStatus: 'Closed',
+      };
+
+      const p = wrangler.waitForHeadClose(10000);
+
+      await expect(p).resolves.toBeUndefined();
+
+      (mockWs as unknown as { lastGreetings: unknown }).lastGreetings = undefined;
+    });
+
+    it('rejects fast on Greetings with Idle status (nothing to close)', async () => {
+      const p = wrangler.waitForHeadClose(600_000).catch((e) => e);
+      await flushAsync();
+
+      emitMessage({ tag: 'Greetings', headStatus: 'Idle' as HeadStatus });
+
+      const err = await p;
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toMatch('head is "Idle"');
     });
   });
 

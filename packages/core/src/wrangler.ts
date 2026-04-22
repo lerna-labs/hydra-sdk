@@ -179,6 +179,11 @@ export class Wrangler {
 
   /**
    * Wait for the Hydra head to fully close and finalize.
+   *
+   * Resolves on the `HeadIsClosed` / `HeadIsFinalized` transition events, **and**
+   * on the initial `Greetings` replay if the head is already at `Closed` or
+   * `Final`. Rejects fast if the head is `Idle` (no head exists to close).
+   *
    * @param timeoutMs - Maximum time to wait in milliseconds.
    */
   public async waitForHeadClose(timeoutMs = 180000): Promise<void> {
@@ -193,11 +198,19 @@ export class Wrangler {
           case 'ReadyToFanout':
             this.ws.send({ tag: 'Fanout' });
             break;
-          case 'Greetings':
-            this.onGreetings(message.headStatus as HeadStatus).catch((err) =>
-              reject(new Error(`Greetings handler failed: ${String(err)}`)),
-            );
+          case 'Greetings': {
+            const status = message.headStatus as HeadStatus;
+            if (status === 'Closed' || status === 'Final') {
+              resolve();
+              return;
+            }
+            if (status === 'Idle') {
+              reject(new Error(`Cannot wait for head to close: head is "Idle" — no head exists to close`));
+              return;
+            }
+            this.onGreetings(status).catch((err) => reject(new Error(`Greetings handler failed: ${String(err)}`)));
             break;
+          }
         }
       },
       timeoutMs,
@@ -207,6 +220,12 @@ export class Wrangler {
 
   /**
    * Wait for the Hydra head to reach the `Open` state.
+   *
+   * Resolves on the `HeadIsOpen` transition event, **and** on the initial
+   * `Greetings` replay if the head is already `Open`. Rejects fast if the
+   * head is in a terminal or shutting-down state (`Closed`, `FanoutPossible`,
+   * `Final`) — a new head must be started from a fresh node.
+   *
    * @param commitArgs - UTxO to commit into the head during initialization.
    * @param timeoutMs - Maximum time to wait in milliseconds.
    */
@@ -220,7 +239,16 @@ export class Wrangler {
           if (!commitArgs) return;
           this.doCommit(commitArgs).catch((err) => reject(new Error(`Commit failed: ${String(err)}`)));
         } else if (message.tag === 'Greetings') {
-          this.onGreetings(message.headStatus as HeadStatus, commitArgs).catch((err) =>
+          const status = message.headStatus as HeadStatus;
+          if (status === 'Open') {
+            resolve();
+            return;
+          }
+          if (status === 'Closed' || status === 'FanoutPossible' || status === 'Final') {
+            reject(new Error(`Cannot wait for head to open: head is "${status}" (terminal or shutting down)`));
+            return;
+          }
+          this.onGreetings(status, commitArgs).catch((err) =>
             reject(new Error(`Greetings handler failed: ${String(err)}`)),
           );
         }
