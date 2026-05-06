@@ -12,7 +12,7 @@ services:
         "--hydra-signing-key", "/${NETWORK}/keys/${INSTANCE}.hydra.sk",
         "--persistence-dir", "/${NETWORK}/hydra/${INSTANCE}",
         "--ledger-protocol-parameters", "/${NETWORK}/config/protocol-parameters.json",
-        "--cardano-signing-key", "/mainnet/keys/${NODE_ID}.cardano.sk",
+        "--cardano-signing-key", "/${NETWORK}/keys/${INSTANCE}.cardano.sk",
         "--node-socket", "/${NETWORK}/config/node.socket",
         "--mainnet",
         "--hydra-scripts-tx-id", "${HYDRA_TX_ID}",
