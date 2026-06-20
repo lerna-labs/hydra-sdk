@@ -370,12 +370,20 @@ describe('Wrangler', () => {
       await expect(p).resolves.toBeUndefined();
     });
 
-    it('resolves on HeadIsClosed', async () => {
+    it('waits past HeadIsClosed and resolves only on HeadIsFinalized (after fanout)', async () => {
       const p = wrangler.waitForHeadClose(10000);
       await flushAsync();
 
+      // HeadIsClosed alone must NOT resolve — fanout has not happened yet.
       emitMessage({ tag: 'HeadIsClosed' });
+      const settled = await Promise.race([p.then(() => 'resolved'), flushAsync().then(() => 'pending')]);
+      expect(settled).toBe('pending');
 
+      emitMessage({ tag: 'ReadyToFanout' });
+      await flushAsync();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Fanout' });
+
+      emitMessage({ tag: 'HeadIsFinalized' });
       await expect(p).resolves.toBeUndefined();
     });
 
@@ -427,14 +435,11 @@ describe('Wrangler', () => {
       await expect(p).rejects.toThrow('Timeout waiting for head to close!');
     });
 
-    it.each([
-      'Closed',
-      'Final',
-    ] as const)('resolves immediately on Greetings with %s status (steady-state)', async (status) => {
+    it('resolves immediately on Greetings with Final status (steady-state)', async () => {
       const p = wrangler.waitForHeadClose(10000);
       await flushAsync();
 
-      emitMessage({ tag: 'Greetings', headStatus: status as HeadStatus });
+      emitMessage({ tag: 'Greetings', headStatus: 'Final' as HeadStatus });
 
       await expect(p).resolves.toBeUndefined();
       // Must not try to drive the lifecycle forward
@@ -442,10 +447,24 @@ describe('Wrangler', () => {
       expect(mockWs.send).not.toHaveBeenCalledWith({ tag: 'Fanout' });
     });
 
-    it('resolves immediately when Greetings is replayed with Closed status', async () => {
+    it('drives fanout (not resolve) on Greetings with Closed status', async () => {
+      const p = wrangler.waitForHeadClose(10000);
+      await flushAsync();
+
+      // A Closed (not yet finalized) head must keep waiting, then fanout.
+      emitMessage({ tag: 'Greetings', headStatus: 'Closed' as HeadStatus });
+      emitMessage({ tag: 'ReadyToFanout' });
+      await flushAsync();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Fanout' });
+
+      emitMessage({ tag: 'HeadIsFinalized' });
+      await expect(p).resolves.toBeUndefined();
+    });
+
+    it('resolves immediately when Greetings is replayed with Final status', async () => {
       (mockWs as unknown as { lastGreetings: unknown }).lastGreetings = {
         tag: 'Greetings',
-        headStatus: 'Closed',
+        headStatus: 'Final',
       };
 
       const p = wrangler.waitForHeadClose(10000);

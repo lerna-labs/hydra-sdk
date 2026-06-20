@@ -12,9 +12,29 @@ differs from Hydra v1: **`Init` opens the head directly with an empty UTxO set**
 and funds are added afterwards as a **deposit/increment** — there is no
 opening Commit/CollectCom and no Abort.
 
-> **Status of this guide.** Phases marked ✅ have been validated end-to-end
-> against the live node. Phases marked ⏳ are implemented and pending the first
-> funded live run (they need tADA in the head). See "Validated so far" below.
+> **Status: PROVEN.** The full round-trip — open → deposit → L2 tx → close →
+> fanout — has been run end-to-end against a live preprod `hydra-node:2.2.0`,
+> with the deposited ADA returned to L1 by the fanout. The hard-won config that
+> makes it work is captured below; read "Critical config" before running.
+
+## Critical config (learned the hard way)
+
+1. **Short `deposit-period` for testing.** hydra-node waits `deposit-period` for a
+   deposit to *mature* before incrementing it (deadline = created + 2×period).
+   The default `3600s` means deposits take ~1 h to land. Set `DEPOSIT_PERIOD=120`
+   (and `CONTESTATION_PERIOD=60` for fast fanout) in `.preprod.<instance>.env`.
+2. **Ledger params: real cost models + ex-unit prices, but ZERO tx fees.** The
+   `--ledger-protocol-parameters` file must have current PlutusV3 cost models and
+   real `executionUnitPrices` (else the Close validator is budgeted 0 ex-units and
+   fails) — but `txFeeFixed`/`txFeePerByte` must be `0` (so L2 stays value-
+   conserved). Generate it from the live chain then zero the fees:
+   `cardano-cli query protocol-parameters … | jq '.txFeeFixed=0|.txFeePerByte=0'`.
+3. **L2 transactions must be ZERO-fee.** Any ADA burned to fees changes the head's
+   ADA overhead and the close fails with `H65 (ChangedHeadAdaOverhead)`. Build L2
+   txs with `setFee('0')` (MeshTxBuilder ignores `minFeeA/B=0`).
+4. **Drive Close/Fanout on a dedicated connection.** Sending `Close`/`Fanout` over
+   a long-lived shared monitor socket was flaky; `scripts/e2e-preprod.ts` opens a
+   fresh `Wrangler` for the close phase.
 
 ---
 
@@ -134,19 +154,19 @@ make NETWORK=preprod INSTANCE=e2e purge-instance-data   # (optional) wipe everyt
 
 ---
 
-## Validated so far
+## Validated (live preprod)
 
-Against the live preprod stack, with no funds yet:
+- ✅ `cardano-node-preprod` synced; `hydra-node-preprod-e2e` (2.2.0) reaches
+  `Idle`/`InSync`.
+- ✅ **OPEN** — `Init → HeadIsOpen` (direct-open, empty UTxO).
+- ✅ **DEPOSIT** — signed `/commit` deposit, finalized into the head with full
+  value (short `deposit-period`).
+- ✅ **L2 TX** — zero-fee self-transfer via `NewTx` → `TxValid` + `SnapshotConfirmed`.
+- ✅ **CLOSE** — `Close → HeadIsClosed` (no `H65` once value is conserved).
+- ✅ **FANOUT** — `ReadyToFanout → Fanout → HeadIsFinalized`; deposited ADA back on L1.
 
-- ✅ `cardano-node-preprod` synced to tip (real-time chain following).
-- ✅ Instance `e2e` created (keys + env + admin address).
-- ✅ `hydra-node-preprod-e2e` (2.2.0) starts, connects to cardano-node, validates
-  the `HYDRA_TX_ID` reference scripts, and reaches `Idle` / `InSync` — confirmed
-  via the SDK `HydraMonitor` (`scripts/head-status.ts`).
-- ⏳ OPEN / DEPOSIT / L2 TX / CLOSE / FANOUT — pending the first funded run.
-
-The same SDK code paths (direct-open, deposit-ingest, snapshot) are already
-exercised end-to-end by the **offline** head — see `docs/offline-head.md`.
+The offline head exercises the same SDK paths deterministically — see
+`docs/offline-head.md`.
 
 ---
 
@@ -160,18 +180,32 @@ exercised end-to-end by the **offline** head — see `docs/offline-head.md`.
   follow-up.
 - **Deposit + L1 rollbacks (important).** A deposit is incremented into the head
   by a snapshot that fires on the deposit's *observation* event. If a preprod
-  rollback reverts the block the deposit landed in, that increment is cancelled
-  and hydra-node 2.2.0 does **not** re-fire it for the already-recorded pending
-  deposit (it shows in `GET /commits` but never enters the snapshot). The funds
-  are safe — recover them after the deposit deadline:
+  fork-switch reverts the block the deposit landed in, that increment is
+  cancelled. hydra-node 2.2.0 **does eventually** re-increment the stranded
+  deposit once it settles deep enough — but this can take a long time (observed
+  ~1 h here), during which it sits in `GET /commits` and not in the snapshot.
+  `Wrangler.depositResilient()` handles this: it waits per-attempt for
+  `CommitFinalized` and, on timeout, deposits a **fresh** small UTxO so the
+  round-trip proceeds without waiting on the stranded one. Pre-create a few small
+  UTxOs (`SPLIT_COUNT=3 npx tsx scripts/fund-split.ts`) so retries have material.
+  Strays are never lost — recover them after their deadline:
   ```bash
-  # lists GET /commits and sends Recover for each (only works AFTER the deadline)
   HYDRA_WS_URL=ws://localhost:4102 HYDRA_API_URL=http://localhost:4102 \
     npx tsx scripts/head-recover.ts
   ```
-  Mitigation: retry the deposit (a rollback hitting the exact deposit block is
-  uncommon), or wait for a quiet chain window. The offline head (no rollbacks)
-  exercises the same increment path deterministically.
+- **L2 transactions spend in-head UTxOs (not on L1).** An in-head UTxO's txid
+  exists only inside the head, so a Blockfrost-backed tx builder 404s trying to
+  resolve it (and MeshTxBuilder requires *some* fetcher). The E2E uses a thin
+  fetcher that returns the in-head UTxO for the spent ref and delegates protocol
+  params to Blockfrost, then submits via `NewTx`.
+- **Deposit-retry edge case.** `depositResilient` retries with a *fresh* small
+  UTxO when a deposit is reorg-delayed. But the `/commit` draft also pulls a fee
+  input from the wallet, and back-to-back retries can reuse a change UTxO the
+  previous attempt already spent → `BadInputsUTxO`/`ValueNotConserved` on submit.
+  A clean run (deposit finalizes first try) completes in one command; for retries
+  under frequent reorgs, run with several pre-split small UTxOs and re-invoke (the
+  deposit phase is idempotent once the head is funded). Improving the SDK to
+  refresh wallet state between attempts is a follow-up.
 - **Timing.** Deposit finalization waits for L1 confirmation (~1–2 preprod
   blocks). Close→fanout waits the contestation period (`--contestation-period`,
   ~120s on this instance). Tune `CONTESTATION_PERIOD` / `DEPOSIT_PERIOD` in

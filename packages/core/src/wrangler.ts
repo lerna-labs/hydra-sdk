@@ -138,10 +138,15 @@ export class Wrangler {
       this.connectWithRetry()
         .then(() => {
           this.ws.on('message', onMsg);
-          // Replay the Greetings message that was consumed during connection.
-          // The Hydra node only sends Greetings once, so the handler above
-          // would never see it without this replay.
-          if (this.ws.lastGreetings) {
+          // Seed the handler with the current head status so steady-state callers
+          // resolve/drive immediately. With a long-lived monitor, the cached
+          // `lastGreetings` is the ONE Greetings from initial connect (often
+          // `Idle`) and is stale across multiple lifecycle calls — use the
+          // monitor's live tracked status instead. Without a monitor, replay the
+          // Greetings consumed during connect (the node only sends it once).
+          if (this.monitor?.connected) {
+            onMsg({ tag: 'Greetings', headStatus: this.monitor.headStatusMixed } as HydraWsMessage);
+          } else if (this.ws.lastGreetings) {
             onMsg(this.ws.lastGreetings);
           }
         })
@@ -203,7 +208,9 @@ export class Wrangler {
     return this.awaitMessage<void>(
       (message, resolve, reject) => {
         switch (message.tag) {
-          case 'HeadIsClosed':
+          // Resolve only once the head is fully finalized (after fanout). On
+          // HeadIsClosed we keep waiting; the node will emit ReadyToFanout after
+          // the contestation period, which we answer with Fanout.
           case 'HeadIsFinalized':
             resolve();
             break;
@@ -212,7 +219,7 @@ export class Wrangler {
             break;
           case 'Greetings': {
             const status = message.headStatus as HeadStatus;
-            if (status === 'Closed' || status === 'Final') {
+            if (status === 'Final') {
               resolve();
               return;
             }
@@ -220,6 +227,7 @@ export class Wrangler {
               reject(new Error(`Cannot wait for head to close: head is "Idle" — no head exists to close`));
               return;
             }
+            // Open → Close, FanoutPossible → Fanout, Closed → wait for ReadyToFanout.
             this.onGreetings(status).catch((err) => reject(new Error(`Greetings handler failed: ${String(err)}`)));
             break;
           }

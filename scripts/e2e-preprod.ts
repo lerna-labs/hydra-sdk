@@ -92,11 +92,25 @@ async function main() {
   const lovelace = String(entry.value.lovelace);
   info(`spending in-head UTxO ${ref} (${lovelace} lovelace)`);
 
-  const tb = new MeshTxBuilder({ fetcher: bf, submitter: bf, verbose: false });
+  // L2 inputs are in-head UTxOs that don't exist on L1, so the default Blockfrost
+  // fetcher 404s resolving them — but MeshTxBuilder requires a fetcher. Use a thin
+  // fetcher that returns the in-head UTxO for our ref and delegates protocol
+  // params (for fee calc) to Blockfrost.
+  const amount = [{ unit: 'lovelace', quantity: lovelace }];
+  const inHead = { input: { txHash, outputIndex: Number(ixStr) }, output: { address: adminAddr, amount } };
+  // Hydra L2 txs MUST be zero-fee: any burned ADA changes the head's ADA overhead
+  // and the close validator rejects it (H65 ChangedHeadAdaOverhead). So output =
+  // input exactly with an explicit fee of 0 (the head ledger's min fee is 0).
+  const fetcher = {
+    fetchProtocolParameters: () => bf.fetchProtocolParameters(),
+    fetchUTxOs: async (hash: string) => (hash === txHash ? [inHead] : bf.fetchUTxOs(hash)),
+    // biome-ignore lint/suspicious/noExplicitAny: minimal IFetcher for in-head tx building
+  } as any;
+  const tb = new MeshTxBuilder({ fetcher, verbose: false });
   const unsigned = await tb
-    .txIn(txHash, Number(ixStr), [{ unit: 'lovelace', quantity: lovelace }], adminAddr)
-    .changeAddress(adminAddr)
-    .selectUtxosFrom([])
+    .txIn(txHash, Number(ixStr), amount, adminAddr)
+    .changeAddress(adminAddr) // full input returns here as change…
+    .setFee('0') // …with zero fee → head ADA conserved (no H65)
     .complete();
   const signedL2 = await admin.signTx(unsigned, true);
 
@@ -111,7 +125,12 @@ async function main() {
 
   // ── Phase 4: CLOSE + FANOUT ────────────────────────────────────────────────
   log('Phase 4 — CLOSE then FANOUT (Close → ReadyToFanout → Fanout → HeadIsFinalized)');
-  await wrangler.waitForHeadClose(900_000);
+  // Use a fresh connection for the close: driving Close/Fanout over the shared
+  // long-lived monitor socket proved flaky, and a dedicated socket reads the
+  // live head status cleanly.
+  const closer = new Wrangler(API_URL, WS_URL);
+  await closer.waitForHeadClose(900_000);
+  await closer.disconnect();
   ok('head finalized — funds fanned out to L1');
 
   await finish(monitor, true);
