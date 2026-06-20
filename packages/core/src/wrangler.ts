@@ -352,6 +352,80 @@ export class Wrangler {
     );
   }
 
+  /**
+   * Deposit funds into an open head, resilient to L1 rollbacks.
+   *
+   * On a live chain a deposit's increment is triggered by the deposit's on-chain
+   * *observation*; if an L1 fork-switch reverts the block the deposit landed in,
+   * hydra-node cancels the increment and does not retry it — the deposit lingers
+   * in `GET /commits` and never enters the snapshot. This method detects that
+   * (the `CommitFinalized` wait times out while a deposit is pending) and retries
+   * with a **fresh** UTxO until one sticks.
+   *
+   * Funds are never lost: a stranded deposit is recoverable after its deadline.
+   *
+   * @param getUtxo - Provides a fresh, unspent small UTxO ref for each attempt.
+   *   Must return a *different* UTxO each call (the previous one is locked in the
+   *   stranded deposit). Querying live L1 UTxOs satisfies this automatically.
+   * @param sign - Signs the drafted deposit tx (CBOR hex) with the UTxO owner's
+   *   key, returning the signed CBOR hex (e.g. `(tx) => wallet.signTx(tx, true)`).
+   * @param opts.maxAttempts - Max deposit attempts (default 3).
+   * @param opts.finalizeTimeoutMs - Per-attempt wait for `CommitFinalized` (default 180s).
+   * @returns The L1 tx id of the deposit that finalized.
+   */
+  public async depositResilient(
+    getUtxo: () => Promise<UTxORef>,
+    sign: (cborHex: string) => Promise<string>,
+    opts: { maxAttempts?: number; finalizeTimeoutMs?: number } = {},
+  ): Promise<string> {
+    const maxAttempts = opts.maxAttempts ?? 3;
+    const finalizeTimeoutMs = opts.finalizeTimeoutMs ?? 180_000;
+
+    const status = await this.getHeadStatus();
+    if (status !== 'Open') {
+      throw new Error(`Cannot deposit: head is "${status}", expected "Open"`);
+    }
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const { txHash, outputIndex } = await getUtxo();
+      const utxos = await this.blockfrost.fetchUTxOs(txHash, outputIndex);
+      if (!utxos[0]) throw new Error(`UTxO not found: ${txHash}#${outputIndex}`);
+      const hydraUtxo = toHydraUTxO(utxos[0]);
+      const cborHex = await this.http.buildCommit({ [`${txHash}#${outputIndex}`]: hydraUtxo });
+      const signed = await sign(cborHex);
+
+      // Register the finalize listener BEFORE submitting so we can't miss it.
+      const finalized = this.awaitMessage<void>(
+        (message, resolve, _reject) => {
+          if (message.tag === 'CommitFinalized') resolve();
+        },
+        finalizeTimeoutMs,
+        'Timeout waiting for CommitFinalized',
+      );
+      const l1TxId = await this.blockfrost.submitTx(signed);
+
+      try {
+        await finalized;
+        return l1TxId;
+      } catch {
+        // Likely cancelled by an L1 rollback. Confirm it's stranded, then retry.
+        const pending = await this.http.getPendingCommits().catch(() => [] as string[]);
+        console.warn(
+          `Deposit attempt ${attempt}/${maxAttempts} did not finalize ` +
+            `(pending deposits: ${pending.length}). Retrying with a fresh UTxO…`,
+        );
+        if (attempt === maxAttempts) {
+          throw new Error(
+            `Deposit failed to finalize after ${maxAttempts} attempts` +
+              (pending.length ? ` (stranded, recoverable after deadline: ${pending.join(', ')})` : ''),
+          );
+        }
+      }
+    }
+    // Unreachable, but satisfies the type checker.
+    throw new Error('Deposit failed to finalize');
+  }
+
   private async doIncrementalCommit(commitArgs: CommitArgs) {
     if (commitArgs.utxos.length !== 1) {
       throw new Error('Incremental commit requires exactly one UTxO');

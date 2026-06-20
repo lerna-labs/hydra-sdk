@@ -17,7 +17,8 @@ import { BlockfrostProvider, MeshTxBuilder } from '@meshsdk/core';
 import { getAdmin } from '../packages/core/src/mesh/get-admin.js';
 
 const BF = process.env.BLOCKFROST_API_KEY ?? '';
-const SPLIT = process.env.SPLIT_LOVELACE ?? '10000000'; // 10 ADA
+const SPLIT = process.env.SPLIT_LOVELACE ?? '10000000'; // 10 ADA each
+const COUNT = Math.max(1, Number(process.env.SPLIT_COUNT ?? '1')); // how many small UTxOs
 const MAX_SMALL = BigInt(process.env.MAX_SMALL_LOVELACE ?? '20000000');
 
 const lovelaceOf = (u: { output: { amount: { unit: string; quantity: string }[] } }) =>
@@ -35,18 +36,17 @@ async function main() {
   console.log('admin address:', addr);
   console.log('L1 UTxOs:', utxos.map((u) => `${u.input.txHash}#${u.input.outputIndex}=${lovelaceOf(u)}`));
 
-  const small = utxos.find((u) => lovelaceOf(u) <= MAX_SMALL);
-  if (small) {
-    console.log(`✓ Small UTxO already present: ${small.input.txHash}#${small.input.outputIndex} (${lovelaceOf(small)} lovelace)`);
+  const existing = utxos.filter((u) => lovelaceOf(u) <= MAX_SMALL).length;
+  if (existing >= COUNT) {
+    console.log(`✓ ${existing} small UTxO(s) already present (need ${COUNT}) — nothing to do`);
     process.exit(0);
   }
+  const toMake = COUNT - existing;
+  console.log(`Creating ${toMake} small UTxO(s) of ${SPLIT} lovelace each…`);
 
   const tb = new MeshTxBuilder({ fetcher: bf, submitter: bf, verbose: false });
-  const unsigned = await tb
-    .txOut(addr, [{ unit: 'lovelace', quantity: SPLIT }])
-    .changeAddress(addr)
-    .selectUtxosFrom(utxos)
-    .complete();
+  for (let i = 0; i < toMake; i++) tb.txOut(addr, [{ unit: 'lovelace', quantity: SPLIT }]);
+  const unsigned = await tb.changeAddress(addr).selectUtxosFrom(utxos).complete();
   const signed = await admin.signTx(unsigned);
   const hash = await admin.submitTx(signed);
   console.log(`✓ Split tx submitted (${SPLIT} lovelace → self): ${hash}`);

@@ -31,6 +31,7 @@ const mockWs = {
 const mockHttp = {
   buildCommit: vi.fn<(payload: unknown) => Promise<string>>(),
   publishDecommit: vi.fn<(payload: unknown) => Promise<unknown>>(),
+  getPendingCommits: vi.fn<() => Promise<string[]>>(),
 };
 
 const mockBlockfrost = {
@@ -124,6 +125,7 @@ describe('Wrangler', () => {
     mockWs.onStatusChange.mockReturnValue('IDLE');
     mockHttp.buildCommit.mockResolvedValue('raw-tx-hex');
     mockHttp.publishDecommit.mockResolvedValue(undefined);
+    mockHttp.getPendingCommits.mockResolvedValue([]);
     mockBlockfrost.submitTx.mockResolvedValue('tx-hash');
     mockBlockfrost.fetchUTxOs.mockResolvedValue([
       {
@@ -698,6 +700,90 @@ describe('Wrangler', () => {
       vi.advanceTimersByTime(3000);
 
       await expect(p).rejects.toThrow('Timeout waiting for incremental commit finalization');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // depositResilient
+  // -------------------------------------------------------------------------
+
+  describe('depositResilient()', () => {
+    /** Make the next getHeadStatus() resolve with the given headStatus. */
+    function greetWith(status: string) {
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: status } as HydraWsMessage), 0);
+        return mockWs;
+      });
+    }
+
+    it('resolves on CommitFinalized and returns the L1 tx id (first attempt)', async () => {
+      greetWith('Open');
+      const getUtxo = vi.fn<() => Promise<{ txHash: string; outputIndex: number }>>().mockResolvedValue({
+        txHash: 'dep1',
+        outputIndex: 0,
+      });
+      const sign = vi.fn<(c: string) => Promise<string>>().mockResolvedValue('signed-cbor');
+
+      const p = wrangler.depositResilient(getUtxo, sign, { maxAttempts: 3, finalizeTimeoutMs: 5000 });
+      await flushAsync();
+      emitMessage({ tag: 'CommitFinalized' });
+
+      await expect(p).resolves.toBe('tx-hash');
+      expect(getUtxo).toHaveBeenCalledTimes(1);
+      expect(sign).toHaveBeenCalledWith('raw-tx-hex');
+      expect(mockBlockfrost.submitTx).toHaveBeenCalledWith('signed-cbor');
+    });
+
+    it('retries with a fresh UTxO after a finalize timeout, then succeeds', async () => {
+      greetWith('Open');
+      mockHttp.getPendingCommits.mockResolvedValue(['stranded-deposit']);
+      const getUtxo = vi
+        .fn<() => Promise<{ txHash: string; outputIndex: number }>>()
+        .mockResolvedValueOnce({ txHash: 'dep1', outputIndex: 0 })
+        .mockResolvedValueOnce({ txHash: 'dep2', outputIndex: 0 });
+      const sign = vi.fn<(c: string) => Promise<string>>().mockResolvedValue('signed');
+
+      const p = wrangler.depositResilient(getUtxo, sign, { maxAttempts: 3, finalizeTimeoutMs: 5000 });
+      await flushAsync();
+      // Attempt 1 never finalizes → advance past the per-attempt timeout
+      await vi.advanceTimersByTimeAsync(5000);
+      await flushAsync();
+      // Attempt 2 is now in flight — finalize it
+      emitMessage({ tag: 'CommitFinalized' });
+
+      await expect(p).resolves.toBe('tx-hash');
+      expect(getUtxo).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws after maxAttempts exhausted', async () => {
+      greetWith('Open');
+      mockHttp.getPendingCommits.mockResolvedValue(['stranded']);
+      const getUtxo = vi
+        .fn<() => Promise<{ txHash: string; outputIndex: number }>>()
+        .mockResolvedValue({ txHash: 'dep', outputIndex: 0 });
+      const sign = vi.fn<(c: string) => Promise<string>>().mockResolvedValue('signed');
+
+      const p = wrangler.depositResilient(getUtxo, sign, { maxAttempts: 2, finalizeTimeoutMs: 5000 }).catch((e) => e);
+      await flushAsync();
+      await vi.advanceTimersByTimeAsync(5000); // attempt 1 timeout
+      await flushAsync();
+      await vi.advanceTimersByTimeAsync(5000); // attempt 2 timeout
+
+      const err = await p;
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toMatch('failed to finalize after 2 attempts');
+    });
+
+    it('rejects when head is not Open', async () => {
+      greetWith('Idle');
+      const p = wrangler.depositResilient(vi.fn(), vi.fn(), {}).catch((e) => e);
+      await flushAsync();
+
+      const err = await p;
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toMatch('Cannot deposit: head is "Idle"');
     });
   });
 });

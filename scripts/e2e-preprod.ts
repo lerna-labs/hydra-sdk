@@ -18,7 +18,6 @@ import sodium from 'libsodium-wrappers-sumo';
 import { BlockfrostProvider, MeshTxBuilder } from '@meshsdk/core';
 import { HydraHttpClient } from '../packages/core/src/hydra/hydra-http-client.js';
 import { HydraMonitor } from '../packages/core/src/hydra/hydra-monitor.js';
-import { toHydraUTxO } from '../packages/core/src/hydra/utxo-conversion.js';
 import { getAdmin } from '../packages/core/src/mesh/get-admin.js';
 import { Wrangler } from '../packages/core/src/wrangler.js';
 
@@ -57,27 +56,27 @@ async function main() {
   ok(`head Open (headId ${monitor.headInfo?.headId})`);
   if (stopHere('open')) return finish(monitor);
 
-  // ── Phase 2: DEPOSIT a small UTxO ──────────────────────────────────────────
-  log('Phase 2 — DEPOSIT a small UTxO into the open head (signed deposit/increment)');
+  // ── Phase 2: DEPOSIT a small UTxO (rollback-resilient) ─────────────────────
+  log('Phase 2 — DEPOSIT a small UTxO into the open head (signed, rollback-resilient)');
   const already = Object.entries(await http.getSnapshotUtxo()).filter(([, e]) => e.address === adminAddr);
   if (already.length > 0) {
     ok(`head already funded (${already.length} UTxO at admin) — skipping deposit (idempotent)`);
   } else {
-    const l1 = await bf.fetchAddressUTxOs(adminAddr);
-    const small = l1.find((u) => lovelaceOf(u) <= DEPOSIT_MAX && lovelaceOf(u) >= 3_000_000n);
-    if (!small) throw new Error(`No small L1 UTxO (<= ${DEPOSIT_MAX}) at ${adminAddr}. Run scripts/fund-split.ts first.`);
-    const key = `${small.input.txHash}#${small.input.outputIndex}`;
-    info(`depositing ${key} (${lovelaceOf(small)} lovelace)`);
-
-    // Draft the deposit (POST /commit), SIGN with the admin key, submit to L1.
-    const draftCbor = await http.buildCommit({ [key]: toHydraUTxO(small) });
-    info('signing deposit tx with admin key…');
-    const signed = await admin.signTx(draftCbor, true);
-    const finalized = monitor.waitForMessage('CommitFinalized', 900_000);
-    const l1TxId = await bf.submitTx(signed);
-    info(`deposit L1 tx submitted: ${l1TxId} — waiting for CommitFinalized…`);
-    await finalized;
-    ok('deposit finalized into the head');
+    // Provide a FRESH small UTxO per attempt — a live L1 query naturally excludes
+    // any UTxO already consumed by a previous (stranded) attempt. Pre-split enough
+    // small UTxOs with: SPLIT_COUNT=3 npx tsx scripts/fund-split.ts
+    const getUtxo = async () => {
+      const l1 = await bf.fetchAddressUTxOs(adminAddr);
+      const small = l1.find((u) => lovelaceOf(u) <= DEPOSIT_MAX && lovelaceOf(u) >= 3_000_000n);
+      if (!small) throw new Error(`No small L1 UTxO (<= ${DEPOSIT_MAX}) available. Run: SPLIT_COUNT=3 npx tsx scripts/fund-split.ts`);
+      info(`depositing ${small.input.txHash}#${small.input.outputIndex} (${lovelaceOf(small)} lovelace)`);
+      return { txHash: small.input.txHash, outputIndex: small.input.outputIndex };
+    };
+    const l1TxId = await wrangler.depositResilient(getUtxo, (cbor) => admin.signTx(cbor, true), {
+      maxAttempts: Number(process.env.DEPOSIT_MAX_ATTEMPTS ?? '3'),
+      finalizeTimeoutMs: Number(process.env.DEPOSIT_FINALIZE_TIMEOUT_MS ?? '180000'),
+    });
+    ok(`deposit finalized into the head (L1 tx ${l1TxId})`);
   }
   const afterDeposit = await http.getSnapshotUtxo();
   ok(`head now holds ${Object.keys(afterDeposit).length} UTxO(s)`);
