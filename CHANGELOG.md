@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### ⚠️ Breaking — Hydra v2 (ADR-33: direct-open head)
+
+Aligns the SDK with Hydra-Node v2.x, which removes the head-initialization
+phase entirely: `Init` now opens the head directly with an empty UTxO set —
+there is no longer a `Commit → CollectCom → Open` flow, nor `Abort`. The SDK
+now targets Hydra-Node v2.x only and drops v1.3.0 support.
+
+#### Removed
+- `'Initializing'` from `HeadStatus` and `'INITIALIZING'` from `HydraStatus` — heads transition `Idle → Open` directly
+- `{ tag: 'Abort' }` from `ClientInput` — abort no longer exists on-chain
+- Server-output message types `HeadIsInitializing`, `Committed`, `HeadIsAborted`, and `IgnoredHeadInitializing` (and their `ServerOutput` union entries)
+- `Wrangler` opening-commit internals (`doCommit`, `fetchUtxos`) — opening a head no longer commits any UTxOs
+- `HydraMonitor` `HeadIsAborted → IDLE` reset handling
+
+#### Changed
+- **`Wrangler.waitForHeadOpen(timeoutMs?)`** — no longer accepts `CommitArgs`; the head opens empty. Fund it afterwards with `incrementalCommit()` (a deposit into the open head).
+- **`Wrangler.startHead()`** — no longer accepts `CommitArgs`; sends `Init` on an `Idle` head and waits for `HeadIsOpen`.
+- `POST /commit` is now exclusively a deposit/increment into an open head (unchanged `HydraHttpClient.buildCommit` surface, new semantics).
+- Example `local-currency` `/start`: opens the head empty, then deposits any supplied `utxos[]` via `incrementalCommit` (UTxOs are now optional).
+
 ### Added
 - Package READMEs and root README with full API documentation
 - Centralized `requireEnv()` / `optionalEnv()` config helpers for standardized environment variable access

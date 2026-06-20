@@ -133,29 +133,36 @@ app.get('/head-info', (_, res) => {
 
 app.post('/start', async (req, res) => {
   const wrangler = new Wrangler(HYDRA_API_URL, undefined, monitor);
-  const { utxos, blueprintTx } = req.body;
+  const { utxos, blueprintTx } = req.body ?? {};
 
-  if (!Array.isArray(utxos)) {
-    console.error('Bad commit payload:', JSON.stringify(req.body));
+  // As of Hydra v2 (ADR-33) a head opens empty — `utxos` is now optional and,
+  // when provided, is deposited into the open head rather than committed at open.
+  if (utxos !== undefined && !Array.isArray(utxos)) {
+    console.error('Bad start payload:', JSON.stringify(req.body));
     return res.status(400).json({
       status: 'ERROR',
-      message: 'Request body must include utxos[]',
-    });
-  }
-
-  if (utxos.length > 1 && !blueprintTx?.cborHex) {
-    console.error('Bad commit payload:', JSON.stringify(req.body));
-    return res.status(400).json({
-      status: 'ERROR',
-      message: 'Multiple UTxOs require a blueprintTx with cborHex',
+      message: 'utxos, if provided, must be an array',
     });
   }
 
   try {
-    await wrangler.waitForHeadOpen({ utxos, blueprintTx }, 180000);
+    // 1. Open the head directly — no opening commit under Hydra v2.
+    await wrangler.waitForHeadOpen(180000);
+
+    // 2. Optionally fund the open head by depositing the supplied UTxOs.
+    //    Deposits are single-UTxO (SDK/MeshJS limitation), so deposit each in
+    //    turn. A blueprintTx only makes sense for a single deposit.
+    const toDeposit = Array.isArray(utxos) ? utxos : [];
+    for (const utxo of toDeposit) {
+      await wrangler.incrementalCommit({
+        utxos: [utxo],
+        blueprintTx: toDeposit.length === 1 ? blueprintTx : undefined,
+      });
+    }
+
     return res.json({
       status: 'SUCCESS',
-      message: 'Head is open',
+      message: toDeposit.length ? `Head is open; deposited ${toDeposit.length} UTxO(s)` : 'Head is open',
     });
   } catch (err: any) {
     console.error('Failed to start head:', err);

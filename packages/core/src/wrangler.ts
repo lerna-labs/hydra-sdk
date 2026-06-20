@@ -4,11 +4,10 @@ import { HydraHttpClient } from './hydra/hydra-http-client.js';
 import type { HydraMonitor } from './hydra/hydra-monitor.js';
 import { HydraWebSocket } from './hydra/hydra-websocket.js';
 import type { HeadStatus, HydraStatus, HydraTransaction, HydraWsMessage } from './hydra/types.js';
-import { toHydraUTxO, toHydraUTxOs } from './hydra/utxo-conversion.js';
+import { toHydraUTxO } from './hydra/utxo-conversion.js';
 
 const HYDRA_TO_HEAD_STATUS: Record<HydraStatus, HeadStatus> = {
   IDLE: 'Idle',
-  INITIALIZING: 'Initializing',
   OPEN: 'Open',
   CLOSED: 'Closed',
   FANOUT_POSSIBLE: 'FanoutPossible',
@@ -23,7 +22,12 @@ export interface UTxORef {
   outputIndex: number;
 }
 
-/** Arguments for committing UTxOs into a Hydra head. */
+/**
+ * Arguments for committing UTxOs into an open Hydra head.
+ *
+ * As of Hydra v2 (ADR-33) a head opens empty and all commits are drafted as
+ * deposits into the open head — see {@link Wrangler.incrementalCommit}.
+ */
 export interface CommitArgs {
   /** One or more UTxO references to commit. */
   utxos: UTxORef[];
@@ -35,15 +39,17 @@ export interface CommitArgs {
  * High-level controller for Hydra head lifecycle operations.
  *
  * Wraps `HydraWebSocket` and `HydraHttpClient` to provide a simplified API
- * for initializing, opening, and closing a Hydra head.
+ * for opening, funding, and closing a Hydra head.
+ *
+ * As of Hydra v2 (ADR-33) opening a head no longer requires a commit: `Init`
+ * opens the head directly with an empty UTxO set. Funds are added afterwards
+ * via {@link Wrangler.incrementalCommit} (a deposit into the open head).
  *
  * @example
  * ```ts
  * const wrangler = new Wrangler("http://localhost:4001", "ws://localhost:4001");
- * await wrangler.waitForHeadOpen({
- *   utxos: [{ txHash: "abc...", outputIndex: 0 }],
- *   blueprintTx: { type: "Tx ConwayEra", cborHex: "...", description: "" },
- * });
+ * await wrangler.waitForHeadOpen();
+ * await wrangler.incrementalCommit({ utxos: [{ txHash: "abc...", outputIndex: 0 }] });
  * ```
  */
 export class Wrangler {
@@ -163,11 +169,17 @@ export class Wrangler {
     return this.ws.onStatusChange(callback);
   }
 
-  /** Begin the head-opening sequence: init, commit, and listen for state changes. */
-  public async startHead(commitArgs: CommitArgs) {
+  /**
+   * Begin the head-opening sequence: send `Init` on an `Idle` head and listen
+   * for state changes until it reaches `Open`.
+   *
+   * As of Hydra v2 (ADR-33) opening no longer commits any UTxOs — the head
+   * opens empty. Use {@link incrementalCommit} to add funds once it is `Open`.
+   */
+  public async startHead() {
     this.mode = 'start';
     await this.connectWithRetry();
-    this.ws.on('message', (msg: HydraWsMessage) => this.handleIncoming(msg, commitArgs));
+    this.ws.on('message', (msg: HydraWsMessage) => this.handleIncoming(msg));
   }
 
   /** Begin the head-closing sequence: close, fanout, and finalize. */
@@ -219,25 +231,25 @@ export class Wrangler {
   }
 
   /**
-   * Wait for the Hydra head to reach the `Open` state.
+   * Open the Hydra head and wait for it to reach the `Open` state.
+   *
+   * As of Hydra v2 (ADR-33) the head opens directly with an empty UTxO set:
+   * on an `Idle` head this sends `Init` and resolves once the node reports
+   * `HeadIsOpen`. Funds are added afterwards via {@link incrementalCommit}.
    *
    * Resolves on the `HeadIsOpen` transition event, **and** on the initial
    * `Greetings` replay if the head is already `Open`. Rejects fast if the
    * head is in a terminal or shutting-down state (`Closed`, `FanoutPossible`,
    * `Final`) — a new head must be started from a fresh node.
    *
-   * @param commitArgs - UTxO to commit into the head during initialization.
    * @param timeoutMs - Maximum time to wait in milliseconds.
    */
-  public async waitForHeadOpen(commitArgs: CommitArgs, timeoutMs = 180000): Promise<void> {
+  public async waitForHeadOpen(timeoutMs = 180000): Promise<void> {
     this.mode = 'start';
     return this.awaitMessage<void>(
       (message, resolve, reject) => {
         if (message.tag === 'HeadIsOpen') {
           resolve();
-        } else if (message.tag === 'HeadIsInitializing') {
-          if (!commitArgs) return;
-          this.doCommit(commitArgs).catch((err) => reject(new Error(`Commit failed: ${String(err)}`)));
         } else if (message.tag === 'Greetings') {
           const status = message.headStatus as HeadStatus;
           if (status === 'Open') {
@@ -248,9 +260,7 @@ export class Wrangler {
             reject(new Error(`Cannot wait for head to open: head is "${status}" (terminal or shutting down)`));
             return;
           }
-          this.onGreetings(status, commitArgs).catch((err) =>
-            reject(new Error(`Greetings handler failed: ${String(err)}`)),
-          );
+          this.onGreetings(status).catch((err) => reject(new Error(`Greetings handler failed: ${String(err)}`)));
         }
       },
       timeoutMs,
@@ -278,26 +288,6 @@ export class Wrangler {
       timeoutMs,
       'Timeout waiting for head status',
     );
-  }
-
-  private async doCommit(commitArgs: CommitArgs) {
-    let cborHex: string;
-    if (commitArgs.blueprintTx) {
-      const utxos = await this.fetchUtxos(commitArgs.utxos);
-      const hydraUtxos = toHydraUTxOs(utxos);
-      cborHex = await this.http.buildCommit({ blueprintTx: commitArgs.blueprintTx, utxo: hydraUtxos });
-    } else if (commitArgs.utxos.length === 0) {
-      cborHex = await this.http.buildCommit({});
-    } else if (commitArgs.utxos.length === 1) {
-      const { txHash, outputIndex } = commitArgs.utxos[0];
-      const utxos = await this.blockfrost.fetchUTxOs(txHash, outputIndex);
-      if (!utxos[0]) throw new Error('UTxO not found');
-      const hydraUtxo = toHydraUTxO(utxos[0]);
-      cborHex = await this.http.buildCommit({ [`${txHash}#${outputIndex}`]: hydraUtxo });
-    } else {
-      throw new Error('Multiple UTxOs without a blueprintTx require a blueprint transaction');
-    }
-    return await this.blockfrost.submitTx(cborHex);
   }
 
   /**
@@ -383,37 +373,14 @@ export class Wrangler {
     return await this.blockfrost.submitTx(cborHex);
   }
 
-  private async fetchUtxos(utxoRefs: UTxORef[]) {
-    const results = [];
-    for (const { txHash, outputIndex } of utxoRefs) {
-      const utxos = await this.blockfrost.fetchUTxOs(txHash, outputIndex);
-      if (!utxos.length) {
-        throw new Error(`UTxO not found for ${txHash}#${outputIndex}`);
-      }
-      results.push(...utxos);
-    }
-    return results;
-  }
-
-  private async handleIncoming(message: HydraWsMessage, commitArgs?: CommitArgs) {
+  private async handleIncoming(message: HydraWsMessage) {
     if (message.tag === 'Greetings') {
-      await this.onGreetings(message.headStatus as HeadStatus, commitArgs);
+      await this.onGreetings(message.headStatus as HeadStatus);
     } else {
       switch (this.mode) {
         case 'start':
-          if (message.tag === 'HeadIsInitializing') {
-            if (commitArgs === undefined) {
-              console.error('No commit arguments specified... aborting commit!');
-              return;
-            }
-            try {
-              await this.doCommit(commitArgs);
-            } catch (err) {
-              console.error('Commit failed during startHead:', err);
-            }
-          }
           if (message.tag === 'HeadIsOpen') {
-            // Successfully started the head here... close gracefully?
+            // Head opened directly (ADR-33) — nothing left to drive.
           }
           break;
         case 'shutdown':
@@ -425,21 +392,13 @@ export class Wrangler {
     }
   }
 
-  private async onGreetings(status: HeadStatus, commitArgs?: CommitArgs) {
+  private async onGreetings(status: HeadStatus) {
     switch (this.mode) {
       case 'start':
         switch (status) {
           case 'Idle':
             console.log('Idle → init()');
             this.ws.send({ tag: 'Init' });
-            break;
-          case 'Initializing':
-            console.log('Initializing -> commit()');
-            if (commitArgs === undefined) {
-              console.error('No commit arguments specified... aborting commit!');
-              return;
-            }
-            await this.doCommit(commitArgs);
             break;
           case 'Open':
             console.log('Open → already ready, proceeding');

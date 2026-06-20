@@ -270,11 +270,8 @@ describe('Wrangler', () => {
   // -------------------------------------------------------------------------
 
   describe('waitForHeadOpen()', () => {
-    const blueprintTx = { type: 'Tx ConwayEra' as const, cborHex: 'deadbeef', description: '' };
-    const commitArgs = { utxos: [{ txHash: 'abc123', outputIndex: 0 }], blueprintTx };
-
     it('resolves on HeadIsOpen message', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+      const p = wrangler.waitForHeadOpen(10000);
       await flushAsync();
 
       emitMessage({ tag: 'HeadIsOpen' });
@@ -282,48 +279,23 @@ describe('Wrangler', () => {
       await expect(p).resolves.toBeUndefined();
     });
 
-    it('commits on HeadIsInitializing', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
-      await flushAsync();
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      expect(mockHttp.buildCommit).toHaveBeenCalled();
-      expect(mockBlockfrost.submitTx).toHaveBeenCalledWith('raw-tx-hex');
-
-      emitMessage({ tag: 'HeadIsOpen' });
-      await expect(p).resolves.toBeUndefined();
-    });
-
-    it('calls init on Greetings with Idle status', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+    it('sends Init (direct-open) on Greetings with Idle status', async () => {
+      const p = wrangler.waitForHeadOpen(10000);
       await flushAsync();
 
       emitMessage({ tag: 'Greetings', headStatus: 'Idle' as HeadStatus });
       await flushAsync();
 
       expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Init' });
-
-      emitMessage({ tag: 'HeadIsOpen' });
-      await expect(p).resolves.toBeUndefined();
-    });
-
-    it('commits on Greetings with Initializing status', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
-      await flushAsync();
-
-      emitMessage({ tag: 'Greetings', headStatus: 'Initializing' as HeadStatus });
-      await flushAsync();
-
-      expect(mockHttp.buildCommit).toHaveBeenCalled();
+      // Opening no longer commits any UTxOs (ADR-33)
+      expect(mockHttp.buildCommit).not.toHaveBeenCalled();
 
       emitMessage({ tag: 'HeadIsOpen' });
       await expect(p).resolves.toBeUndefined();
     });
 
     it('rejects on timeout', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 2000);
+      const p = wrangler.waitForHeadOpen(2000);
       await flushAsync();
 
       vi.advanceTimersByTime(2000);
@@ -332,7 +304,7 @@ describe('Wrangler', () => {
     });
 
     it('settles only once even if multiple HeadIsOpen messages arrive', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+      const p = wrangler.waitForHeadOpen(10000);
       await flushAsync();
 
       emitMessage({ tag: 'HeadIsOpen' });
@@ -342,7 +314,7 @@ describe('Wrangler', () => {
     });
 
     it('resolves immediately on Greetings with Open status (steady-state)', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+      const p = wrangler.waitForHeadOpen(10000);
       await flushAsync();
 
       emitMessage({ tag: 'Greetings', headStatus: 'Open' as HeadStatus });
@@ -359,7 +331,7 @@ describe('Wrangler', () => {
         headStatus: 'Open',
       };
 
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+      const p = wrangler.waitForHeadOpen(10000);
 
       await expect(p).resolves.toBeUndefined();
 
@@ -371,7 +343,7 @@ describe('Wrangler', () => {
       'FanoutPossible',
       'Final',
     ] as const)('rejects fast on Greetings with terminal status %s', async (status) => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 600_000).catch((e) => e);
+      const p = wrangler.waitForHeadOpen(600_000).catch((e) => e);
       await flushAsync();
 
       emitMessage({ tag: 'Greetings', headStatus: status as HeadStatus });
@@ -498,31 +470,21 @@ describe('Wrangler', () => {
   // -------------------------------------------------------------------------
 
   describe('startHead()', () => {
-    const startBlueprintTx = { type: 'Tx ConwayEra' as const, cborHex: 'cafebabe', description: '' };
-
     it('sets mode to start, registers handler, and connects', async () => {
-      await wrangler.startHead({ utxos: [{ txHash: 'tx1', outputIndex: 0 }], blueprintTx: startBlueprintTx });
+      await wrangler.startHead();
 
       expect(mockWs.on).toHaveBeenCalledWith('message', expect.any(Function));
       expect(mockWs.waitForGreetings).toHaveBeenCalled();
     });
 
-    it('handler commits on HeadIsInitializing', async () => {
-      await wrangler.startHead({ utxos: [{ txHash: 'tx1', outputIndex: 2 }], blueprintTx: startBlueprintTx });
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      expect(mockHttp.buildCommit).toHaveBeenCalled();
-    });
-
-    it('handler calls init on Greetings Idle', async () => {
-      await wrangler.startHead({ utxos: [{ txHash: 'tx1', outputIndex: 0 }], blueprintTx: startBlueprintTx });
+    it('handler calls init on Greetings Idle without committing (direct-open)', async () => {
+      await wrangler.startHead();
 
       emitMessage({ tag: 'Greetings', headStatus: 'Idle' as HeadStatus });
       await flushAsync();
 
       expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Init' });
+      expect(mockHttp.buildCommit).not.toHaveBeenCalled();
     });
   });
 
@@ -550,72 +512,6 @@ describe('Wrangler', () => {
       await flushAsync();
 
       expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Close' });
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // doCommit branching
-  // -------------------------------------------------------------------------
-
-  describe('doCommit() branching', () => {
-    it('calls buildCommit with empty object when utxos is empty and no blueprintTx', async () => {
-      const p = wrangler.waitForHeadOpen({ utxos: [] }, 10000);
-      await flushAsync();
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      expect(mockHttp.buildCommit).toHaveBeenCalledWith({});
-
-      emitMessage({ tag: 'HeadIsOpen' });
-      await expect(p).resolves.toBeUndefined();
-    });
-
-    it('calls buildCommit for single UTxO without blueprintTx', async () => {
-      const p = wrangler.waitForHeadOpen({ utxos: [{ txHash: 'abc123', outputIndex: 0 }] }, 10000);
-      await flushAsync();
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      expect(mockBlockfrost.fetchUTxOs).toHaveBeenCalledWith('abc123', 0);
-      expect(mockHttp.buildCommit).toHaveBeenCalled();
-
-      emitMessage({ tag: 'HeadIsOpen' });
-      await expect(p).resolves.toBeUndefined();
-    });
-
-    it('rejects for multiple UTxOs without blueprintTx', async () => {
-      const commitArgs = {
-        utxos: [
-          { txHash: 'abc123', outputIndex: 0 },
-          { txHash: 'def456', outputIndex: 1 },
-        ],
-      };
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000).catch((e) => e);
-      await flushAsync();
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      const err = await p;
-      expect(err).toBeInstanceOf(Error);
-      expect((err as Error).message).toMatch('Multiple UTxOs without a blueprintTx');
-    });
-
-    it('calls buildCommit with blueprint when blueprintTx is provided', async () => {
-      const blueprintTx = { type: 'Tx ConwayEra' as const, cborHex: 'deadbeef', description: '' };
-      const commitArgs = { utxos: [{ txHash: 'abc123', outputIndex: 0 }], blueprintTx };
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
-      await flushAsync();
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      expect(mockHttp.buildCommit).toHaveBeenCalledWith(expect.objectContaining({ blueprintTx }));
-
-      emitMessage({ tag: 'HeadIsOpen' });
-      await expect(p).resolves.toBeUndefined();
     });
   });
 

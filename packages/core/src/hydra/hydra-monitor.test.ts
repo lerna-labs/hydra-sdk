@@ -27,14 +27,12 @@ vi.mock('./hydra-websocket.js', () => ({
   },
   HEAD_STATUS_TO_HYDRA: {
     Idle: 'IDLE',
-    Initializing: 'INITIALIZING',
     Open: 'OPEN',
     Closed: 'CLOSED',
     FanoutPossible: 'FANOUT_POSSIBLE',
     Final: 'FINAL',
   },
   TAG_TO_HYDRA: {
-    HeadIsInitializing: 'INITIALIZING',
     HeadIsOpen: 'OPEN',
     HeadIsClosed: 'CLOSED',
     ReadyToFanout: 'FANOUT_POSSIBLE',
@@ -54,7 +52,7 @@ function greetingsMsg(headStatus = 'Idle'): HydraWsMessage {
     headStatus,
     me: { vkey: 'abc123' },
     hydraHeadId: 'deb5680101c46df8583b02ad2dccccff8058c3d0301a074a876f1c70',
-    hydraNodeVersion: '1.3.0-test',
+    hydraNodeVersion: '2.2.0-test',
     chainSyncedStatus: 'InSync',
     currentSlot: 119808552,
     env: {
@@ -172,9 +170,6 @@ describe('HydraMonitor', () => {
     it('updates from state transition messages', async () => {
       await monitor.start();
 
-      emitWsMessage({ tag: 'HeadIsInitializing', headId: 'abc', parties: [] });
-      expect(monitor.headStatus).toBe('INITIALIZING');
-
       emitWsMessage({ tag: 'HeadIsOpen', utxo: {} });
       expect(monitor.headStatus).toBe('OPEN');
 
@@ -186,16 +181,6 @@ describe('HydraMonitor', () => {
 
       emitWsMessage({ tag: 'HeadIsFinalized' });
       expect(monitor.headStatus).toBe('FINAL');
-    });
-
-    it('maps HeadIsAborted to IDLE', async () => {
-      await monitor.start();
-
-      emitWsMessage({ tag: 'HeadIsOpen', utxo: {} });
-      expect(monitor.headStatus).toBe('OPEN');
-
-      emitWsMessage({ tag: 'HeadIsAborted' });
-      expect(monitor.headStatus).toBe('IDLE');
     });
   });
 
@@ -230,7 +215,7 @@ describe('HydraMonitor', () => {
       expect(info).not.toBeNull();
       expect(info!.headStatus).toBe('Idle');
       expect(info!.headId).toBe('deb5680101c46df8583b02ad2dccccff8058c3d0301a074a876f1c70');
-      expect(info!.nodeVersion).toBe('1.3.0-test');
+      expect(info!.nodeVersion).toBe('2.2.0-test');
       expect(info!.me).toBe('abc123');
       expect(info!.contestationPeriod).toBe(120);
       expect(info!.depositPeriod).toBe(1800);
@@ -260,9 +245,6 @@ describe('HydraMonitor', () => {
       await monitor.start();
       expect(monitor.headInfo!.headStatus).toBe('Idle');
 
-      emitWsMessage({ tag: 'HeadIsInitializing', headId: 'new-head-abc', parties: [] });
-      expect(monitor.headInfo!.headStatus).toBe('Initializing');
-
       emitWsMessage({ tag: 'HeadIsOpen', headId: 'new-head-abc', utxo: {} });
       expect(monitor.headInfo!.headStatus).toBe('Open');
 
@@ -276,7 +258,7 @@ describe('HydraMonitor', () => {
       expect(monitor.headInfo!.headStatus).toBe('Final');
     });
 
-    it('tracks headId from HeadIsInitializing when Greetings lacks it', async () => {
+    it('tracks headId from HeadIsOpen when Greetings lacks it', async () => {
       mockWs.lastGreetings = {
         tag: 'Greetings',
         headStatus: 'Idle',
@@ -285,18 +267,8 @@ describe('HydraMonitor', () => {
       await monitor.start();
       expect(monitor.headInfo!.headId).toBeNull();
 
-      emitWsMessage({ tag: 'HeadIsInitializing', headId: 'fresh-head-id', parties: [] });
+      emitWsMessage({ tag: 'HeadIsOpen', headId: 'fresh-head-id', utxo: {} });
       expect(monitor.headInfo!.headId).toBe('fresh-head-id');
-    });
-
-    it('clears headId on HeadIsAborted', async () => {
-      await monitor.start();
-      emitWsMessage({ tag: 'HeadIsInitializing', headId: 'head-to-abort', parties: [] });
-      expect(monitor.headInfo!.headId).toBe('head-to-abort');
-
-      emitWsMessage({ tag: 'HeadIsAborted', headId: 'head-to-abort', utxo: {} });
-      expect(monitor.headInfo!.headStatus).toBe('Idle');
-      expect(monitor.headInfo!.headId).toBeNull();
     });
   });
 
