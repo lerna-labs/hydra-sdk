@@ -804,5 +804,50 @@ describe('Wrangler', () => {
       expect(err).toBeInstanceOf(Error);
       expect((err as Error).message).toMatch('Cannot deposit: head is "Idle"');
     });
+
+    it('re-drafts (same UTxO) after a transient stale-input submit error, then succeeds', async () => {
+      greetWith('Open');
+      mockBlockfrost.submitTx
+        .mockRejectedValueOnce(new Error('Hydra HTTP 400 on submit: BadInputsUTxO (stale fee input)'))
+        .mockResolvedValue('tx-hash');
+      const getUtxo = vi.fn<() => Promise<{ txHash: string; outputIndex: number }>>().mockResolvedValue({
+        txHash: 'dep1',
+        outputIndex: 0,
+      });
+      const sign = vi.fn<(c: string) => Promise<string>>().mockResolvedValue('signed');
+
+      const p = wrangler.depositResilient(getUtxo, sign, {
+        maxAttempts: 1,
+        finalizeTimeoutMs: 5000,
+        submitRetries: 3,
+        submitRetryDelayMs: 1000,
+      });
+      await flushAsync();
+      // First submit rejected (transient) → wait the re-draft delay → submit again
+      await vi.advanceTimersByTimeAsync(1000);
+      await flushAsync();
+      emitMessage({ tag: 'CommitFinalized' });
+
+      await expect(p).resolves.toBe('tx-hash');
+      expect(mockBlockfrost.submitTx).toHaveBeenCalledTimes(2); // re-drafted once
+      expect(getUtxo).toHaveBeenCalledTimes(1); // same UTxO, not a fresh-UTxO retry
+    });
+
+    it('does not re-draft on a non-transient submit error', async () => {
+      greetWith('Open');
+      mockBlockfrost.submitTx.mockRejectedValue(new Error('fatal: signing key mismatch'));
+      const getUtxo = vi
+        .fn<() => Promise<{ txHash: string; outputIndex: number }>>()
+        .mockResolvedValue({ txHash: 'dep1', outputIndex: 0 });
+      const sign = vi.fn<(c: string) => Promise<string>>().mockResolvedValue('signed');
+
+      const p = wrangler.depositResilient(getUtxo, sign, { maxAttempts: 1, submitRetries: 3 }).catch((e) => e);
+      await flushAsync();
+
+      const err = await p;
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toMatch('signing key mismatch');
+      expect(mockBlockfrost.submitTx).toHaveBeenCalledTimes(1); // no re-draft
+    });
   });
 });

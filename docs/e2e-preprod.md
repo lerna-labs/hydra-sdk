@@ -198,14 +198,14 @@ The offline head exercises the same SDK paths deterministically — see
   resolve it (and MeshTxBuilder requires *some* fetcher). The E2E uses a thin
   fetcher that returns the in-head UTxO for the spent ref and delegates protocol
   params to Blockfrost, then submits via `NewTx`.
-- **Deposit-retry edge case.** `depositResilient` retries with a *fresh* small
-  UTxO when a deposit is reorg-delayed. But the `/commit` draft also pulls a fee
-  input from the wallet, and back-to-back retries can reuse a change UTxO the
-  previous attempt already spent → `BadInputsUTxO`/`ValueNotConserved` on submit.
-  A clean run (deposit finalizes first try) completes in one command; for retries
-  under frequent reorgs, run with several pre-split small UTxOs and re-invoke (the
-  deposit phase is idempotent once the head is funded). Improving the SDK to
-  refresh wallet state between attempts is a follow-up.
+- **Deposit-retry staleness (handled).** The hydra-node funds the deposit tx's
+  fee from the committer's other UTxOs using its chain view; just after a rollback
+  that view can reference a reverted tx's outputs → `BadInputsUTxO`/
+  `ValueNotConserved` on submit. `depositResilient` now treats these as transient
+  and **re-drafts** the deposit after a short delay (`submitRetryDelayMs`, default
+  8s, ×`submitRetries`, default 3) so the node re-syncs first; only a finalize
+  timeout escalates to a fresh-UTxO retry. Still pre-split a few small UTxOs
+  (`SPLIT_COUNT=3`) so fresh-UTxO retries have material.
 - **Timing.** Deposit finalization waits for L1 confirmation (~1–2 preprod
   blocks). Close→fanout waits the contestation period (`--contestation-period`,
   ~120s on this instance). Tune `CONTESTATION_PERIOD` / `DEPOSIT_PERIOD` in

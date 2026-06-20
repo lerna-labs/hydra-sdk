@@ -75,6 +75,8 @@ async function main() {
     const l1TxId = await wrangler.depositResilient(getUtxo, (cbor) => admin.signTx(cbor, true), {
       maxAttempts: Number(process.env.DEPOSIT_MAX_ATTEMPTS ?? '3'),
       finalizeTimeoutMs: Number(process.env.DEPOSIT_FINALIZE_TIMEOUT_MS ?? '180000'),
+      submitRetries: Number(process.env.DEPOSIT_SUBMIT_RETRIES ?? '3'),
+      submitRetryDelayMs: Number(process.env.DEPOSIT_SUBMIT_RETRY_DELAY_MS ?? '8000'),
     });
     ok(`deposit finalized into the head (L1 tx ${l1TxId})`);
   }

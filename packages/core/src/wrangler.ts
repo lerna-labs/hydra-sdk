@@ -360,34 +360,56 @@ export class Wrangler {
     );
   }
 
+  /** Transient L1-submission errors caused by a stale node/chain view post-rollback. */
+  private static readonly TRANSIENT_SUBMIT =
+    /BadInputsUTxO|ValueNotConserved|StaleUTxO|TxSubmitFail|Bad Request|already in the mempool/i;
+
+  /** Sleep helper (real timers; advanced by fake timers in tests). */
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   /**
    * Deposit funds into an open head, resilient to L1 rollbacks.
    *
-   * On a live chain a deposit's increment is triggered by the deposit's on-chain
-   * *observation*; if an L1 fork-switch reverts the block the deposit landed in,
-   * hydra-node cancels the increment and does not retry it — the deposit lingers
-   * in `GET /commits` and never enters the snapshot. This method detects that
-   * (the `CommitFinalized` wait times out while a deposit is pending) and retries
-   * with a **fresh** UTxO until one sticks.
+   * Two failure modes are handled:
+   *
+   * 1. **Stale fee input (transient).** The hydra-node funds the deposit tx's fee
+   *    from the committer's *other* UTxOs using its chain view. Just after a
+   *    rollback, that view can reference a reverted tx's outputs, so submission
+   *    fails with `BadInputsUTxO`/`ValueNotConserved`. We re-draft after a short
+   *    delay (letting the node re-sync) before giving up on the attempt.
+   * 2. **Cancelled increment (rollback).** A deposit's increment is triggered by
+   *    its on-chain *observation*; a fork-switch can cancel it so the deposit
+   *    lingers in `GET /commits` and never enters the snapshot. On a finalize
+   *    timeout we retry with a **fresh** UTxO.
    *
    * Funds are never lost: a stranded deposit is recoverable after its deadline.
    *
    * @param getUtxo - Provides a fresh, unspent small UTxO ref for each attempt.
-   *   Must return a *different* UTxO each call (the previous one is locked in the
-   *   stranded deposit). Querying live L1 UTxOs satisfies this automatically.
+   *   Must return a *different* UTxO each call. A live L1 query satisfies this.
    * @param sign - Signs the drafted deposit tx (CBOR hex) with the UTxO owner's
    *   key, returning the signed CBOR hex (e.g. `(tx) => wallet.signTx(tx, true)`).
-   * @param opts.maxAttempts - Max deposit attempts (default 3).
+   * @param opts.maxAttempts - Max deposit attempts with fresh UTxOs (default 3).
    * @param opts.finalizeTimeoutMs - Per-attempt wait for `CommitFinalized` (default 180s).
+   * @param opts.submitRetries - Re-draft attempts on a transient submit error (default 3).
+   * @param opts.submitRetryDelayMs - Delay before re-drafting, lets the node re-sync (default 8s).
    * @returns The L1 tx id of the deposit that finalized.
    */
   public async depositResilient(
     getUtxo: () => Promise<UTxORef>,
     sign: (cborHex: string) => Promise<string>,
-    opts: { maxAttempts?: number; finalizeTimeoutMs?: number } = {},
+    opts: {
+      maxAttempts?: number;
+      finalizeTimeoutMs?: number;
+      submitRetries?: number;
+      submitRetryDelayMs?: number;
+    } = {},
   ): Promise<string> {
     const maxAttempts = opts.maxAttempts ?? 3;
     const finalizeTimeoutMs = opts.finalizeTimeoutMs ?? 180_000;
+    const submitRetries = opts.submitRetries ?? 3;
+    const submitRetryDelayMs = opts.submitRetryDelayMs ?? 8_000;
 
     const status = await this.getHeadStatus();
     if (status !== 'Open') {
@@ -395,43 +417,61 @@ export class Wrangler {
     }
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const { txHash, outputIndex } = await getUtxo();
-      const utxos = await this.blockfrost.fetchUTxOs(txHash, outputIndex);
-      if (!utxos[0]) throw new Error(`UTxO not found: ${txHash}#${outputIndex}`);
-      const hydraUtxo = toHydraUTxO(utxos[0]);
-      const cborHex = await this.http.buildCommit({ [`${txHash}#${outputIndex}`]: hydraUtxo });
-      const signed = await sign(cborHex);
+      const ref = await getUtxo();
 
-      // Register the finalize listener BEFORE submitting so we can't miss it.
-      const finalized = this.awaitMessage<void>(
-        (message, resolve, _reject) => {
-          if (message.tag === 'CommitFinalized') resolve();
-        },
-        finalizeTimeoutMs,
-        'Timeout waiting for CommitFinalized',
-      );
-      const l1TxId = await this.blockfrost.submitTx(signed);
+      // Draft → sign → submit, re-drafting on transient stale-input errors.
+      let l1TxId: string | undefined;
+      for (let sub = 1; sub <= submitRetries; sub++) {
+        try {
+          l1TxId = await this.submitDeposit(ref, sign);
+          break;
+        } catch (err) {
+          if (!Wrangler.TRANSIENT_SUBMIT.test(String(err)) || sub === submitRetries) throw err;
+          console.warn(
+            `Deposit submit hit a transient stale-input error (try ${sub}/${submitRetries}); ` +
+              `re-drafting in ${submitRetryDelayMs}ms…`,
+          );
+          await this.delay(submitRetryDelayMs);
+        }
+      }
 
+      // Wait for the increment to finalize. The deposit matures over ~deposit-period,
+      // so registering the listener now (just after submit) cannot miss the event.
       try {
-        await finalized;
-        return l1TxId;
-      } catch {
-        // Likely cancelled by an L1 rollback. Confirm it's stranded, then retry.
-        const pending = await this.http.getPendingCommits().catch(() => [] as string[]);
-        console.warn(
-          `Deposit attempt ${attempt}/${maxAttempts} did not finalize ` +
-            `(pending deposits: ${pending.length}). Retrying with a fresh UTxO…`,
+        await this.awaitMessage<void>(
+          (message, resolve) => {
+            if (message.tag === 'CommitFinalized') resolve();
+          },
+          finalizeTimeoutMs,
+          'Timeout waiting for CommitFinalized',
         );
+        return l1TxId as string;
+      } catch {
+        const pending = await this.http.getPendingCommits().catch(() => [] as string[]);
         if (attempt === maxAttempts) {
           throw new Error(
             `Deposit failed to finalize after ${maxAttempts} attempts` +
               (pending.length ? ` (stranded, recoverable after deadline: ${pending.join(', ')})` : ''),
           );
         }
+        console.warn(
+          `Deposit attempt ${attempt}/${maxAttempts} did not finalize ` +
+            `(pending deposits: ${pending.length}). Retrying with a fresh UTxO…`,
+        );
       }
     }
     // Unreachable, but satisfies the type checker.
     throw new Error('Deposit failed to finalize');
+  }
+
+  /** Draft a deposit for `ref` via `POST /commit`, sign it, and submit to L1. */
+  private async submitDeposit(ref: UTxORef, sign: (cborHex: string) => Promise<string>): Promise<string> {
+    const { txHash, outputIndex } = ref;
+    const utxos = await this.blockfrost.fetchUTxOs(txHash, outputIndex);
+    if (!utxos[0]) throw new Error(`UTxO not found: ${txHash}#${outputIndex}`);
+    const cborHex = await this.http.buildCommit({ [`${txHash}#${outputIndex}`]: toHydraUTxO(utxos[0]) });
+    const signed = await sign(cborHex);
+    return this.blockfrost.submitTx(signed);
   }
 
   private async doIncrementalCommit(commitArgs: CommitArgs) {
