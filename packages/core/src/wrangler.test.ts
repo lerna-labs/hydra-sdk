@@ -31,6 +31,7 @@ const mockWs = {
 const mockHttp = {
   buildCommit: vi.fn<(payload: unknown) => Promise<string>>(),
   publishDecommit: vi.fn<(payload: unknown) => Promise<unknown>>(),
+  getPendingCommits: vi.fn<() => Promise<string[]>>(),
 };
 
 const mockBlockfrost = {
@@ -124,6 +125,7 @@ describe('Wrangler', () => {
     mockWs.onStatusChange.mockReturnValue('IDLE');
     mockHttp.buildCommit.mockResolvedValue('raw-tx-hex');
     mockHttp.publishDecommit.mockResolvedValue(undefined);
+    mockHttp.getPendingCommits.mockResolvedValue([]);
     mockBlockfrost.submitTx.mockResolvedValue('tx-hash');
     mockBlockfrost.fetchUTxOs.mockResolvedValue([
       {
@@ -270,11 +272,8 @@ describe('Wrangler', () => {
   // -------------------------------------------------------------------------
 
   describe('waitForHeadOpen()', () => {
-    const blueprintTx = { type: 'Tx ConwayEra' as const, cborHex: 'deadbeef', description: '' };
-    const commitArgs = { utxos: [{ txHash: 'abc123', outputIndex: 0 }], blueprintTx };
-
     it('resolves on HeadIsOpen message', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+      const p = wrangler.waitForHeadOpen(10000);
       await flushAsync();
 
       emitMessage({ tag: 'HeadIsOpen' });
@@ -282,48 +281,23 @@ describe('Wrangler', () => {
       await expect(p).resolves.toBeUndefined();
     });
 
-    it('commits on HeadIsInitializing', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
-      await flushAsync();
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      expect(mockHttp.buildCommit).toHaveBeenCalled();
-      expect(mockBlockfrost.submitTx).toHaveBeenCalledWith('raw-tx-hex');
-
-      emitMessage({ tag: 'HeadIsOpen' });
-      await expect(p).resolves.toBeUndefined();
-    });
-
-    it('calls init on Greetings with Idle status', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+    it('sends Init (direct-open) on Greetings with Idle status', async () => {
+      const p = wrangler.waitForHeadOpen(10000);
       await flushAsync();
 
       emitMessage({ tag: 'Greetings', headStatus: 'Idle' as HeadStatus });
       await flushAsync();
 
       expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Init' });
-
-      emitMessage({ tag: 'HeadIsOpen' });
-      await expect(p).resolves.toBeUndefined();
-    });
-
-    it('commits on Greetings with Initializing status', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
-      await flushAsync();
-
-      emitMessage({ tag: 'Greetings', headStatus: 'Initializing' as HeadStatus });
-      await flushAsync();
-
-      expect(mockHttp.buildCommit).toHaveBeenCalled();
+      // Opening no longer commits any UTxOs (ADR-33)
+      expect(mockHttp.buildCommit).not.toHaveBeenCalled();
 
       emitMessage({ tag: 'HeadIsOpen' });
       await expect(p).resolves.toBeUndefined();
     });
 
     it('rejects on timeout', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 2000);
+      const p = wrangler.waitForHeadOpen(2000);
       await flushAsync();
 
       vi.advanceTimersByTime(2000);
@@ -332,7 +306,7 @@ describe('Wrangler', () => {
     });
 
     it('settles only once even if multiple HeadIsOpen messages arrive', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+      const p = wrangler.waitForHeadOpen(10000);
       await flushAsync();
 
       emitMessage({ tag: 'HeadIsOpen' });
@@ -342,7 +316,7 @@ describe('Wrangler', () => {
     });
 
     it('resolves immediately on Greetings with Open status (steady-state)', async () => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+      const p = wrangler.waitForHeadOpen(10000);
       await flushAsync();
 
       emitMessage({ tag: 'Greetings', headStatus: 'Open' as HeadStatus });
@@ -359,7 +333,7 @@ describe('Wrangler', () => {
         headStatus: 'Open',
       };
 
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
+      const p = wrangler.waitForHeadOpen(10000);
 
       await expect(p).resolves.toBeUndefined();
 
@@ -371,7 +345,7 @@ describe('Wrangler', () => {
       'FanoutPossible',
       'Final',
     ] as const)('rejects fast on Greetings with terminal status %s', async (status) => {
-      const p = wrangler.waitForHeadOpen(commitArgs, 600_000).catch((e) => e);
+      const p = wrangler.waitForHeadOpen(600_000).catch((e) => e);
       await flushAsync();
 
       emitMessage({ tag: 'Greetings', headStatus: status as HeadStatus });
@@ -396,12 +370,20 @@ describe('Wrangler', () => {
       await expect(p).resolves.toBeUndefined();
     });
 
-    it('resolves on HeadIsClosed', async () => {
+    it('waits past HeadIsClosed and resolves only on HeadIsFinalized (after fanout)', async () => {
       const p = wrangler.waitForHeadClose(10000);
       await flushAsync();
 
+      // HeadIsClosed alone must NOT resolve — fanout has not happened yet.
       emitMessage({ tag: 'HeadIsClosed' });
+      const settled = await Promise.race([p.then(() => 'resolved'), flushAsync().then(() => 'pending')]);
+      expect(settled).toBe('pending');
 
+      emitMessage({ tag: 'ReadyToFanout' });
+      await flushAsync();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Fanout' });
+
+      emitMessage({ tag: 'HeadIsFinalized' });
       await expect(p).resolves.toBeUndefined();
     });
 
@@ -453,14 +435,11 @@ describe('Wrangler', () => {
       await expect(p).rejects.toThrow('Timeout waiting for head to close!');
     });
 
-    it.each([
-      'Closed',
-      'Final',
-    ] as const)('resolves immediately on Greetings with %s status (steady-state)', async (status) => {
+    it('resolves immediately on Greetings with Final status (steady-state)', async () => {
       const p = wrangler.waitForHeadClose(10000);
       await flushAsync();
 
-      emitMessage({ tag: 'Greetings', headStatus: status as HeadStatus });
+      emitMessage({ tag: 'Greetings', headStatus: 'Final' as HeadStatus });
 
       await expect(p).resolves.toBeUndefined();
       // Must not try to drive the lifecycle forward
@@ -468,10 +447,24 @@ describe('Wrangler', () => {
       expect(mockWs.send).not.toHaveBeenCalledWith({ tag: 'Fanout' });
     });
 
-    it('resolves immediately when Greetings is replayed with Closed status', async () => {
+    it('drives fanout (not resolve) on Greetings with Closed status', async () => {
+      const p = wrangler.waitForHeadClose(10000);
+      await flushAsync();
+
+      // A Closed (not yet finalized) head must keep waiting, then fanout.
+      emitMessage({ tag: 'Greetings', headStatus: 'Closed' as HeadStatus });
+      emitMessage({ tag: 'ReadyToFanout' });
+      await flushAsync();
+      expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Fanout' });
+
+      emitMessage({ tag: 'HeadIsFinalized' });
+      await expect(p).resolves.toBeUndefined();
+    });
+
+    it('resolves immediately when Greetings is replayed with Final status', async () => {
       (mockWs as unknown as { lastGreetings: unknown }).lastGreetings = {
         tag: 'Greetings',
-        headStatus: 'Closed',
+        headStatus: 'Final',
       };
 
       const p = wrangler.waitForHeadClose(10000);
@@ -498,31 +491,21 @@ describe('Wrangler', () => {
   // -------------------------------------------------------------------------
 
   describe('startHead()', () => {
-    const startBlueprintTx = { type: 'Tx ConwayEra' as const, cborHex: 'cafebabe', description: '' };
-
     it('sets mode to start, registers handler, and connects', async () => {
-      await wrangler.startHead({ utxos: [{ txHash: 'tx1', outputIndex: 0 }], blueprintTx: startBlueprintTx });
+      await wrangler.startHead();
 
       expect(mockWs.on).toHaveBeenCalledWith('message', expect.any(Function));
       expect(mockWs.waitForGreetings).toHaveBeenCalled();
     });
 
-    it('handler commits on HeadIsInitializing', async () => {
-      await wrangler.startHead({ utxos: [{ txHash: 'tx1', outputIndex: 2 }], blueprintTx: startBlueprintTx });
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      expect(mockHttp.buildCommit).toHaveBeenCalled();
-    });
-
-    it('handler calls init on Greetings Idle', async () => {
-      await wrangler.startHead({ utxos: [{ txHash: 'tx1', outputIndex: 0 }], blueprintTx: startBlueprintTx });
+    it('handler calls init on Greetings Idle without committing (direct-open)', async () => {
+      await wrangler.startHead();
 
       emitMessage({ tag: 'Greetings', headStatus: 'Idle' as HeadStatus });
       await flushAsync();
 
       expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Init' });
+      expect(mockHttp.buildCommit).not.toHaveBeenCalled();
     });
   });
 
@@ -550,72 +533,6 @@ describe('Wrangler', () => {
       await flushAsync();
 
       expect(mockWs.send).toHaveBeenCalledWith({ tag: 'Close' });
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // doCommit branching
-  // -------------------------------------------------------------------------
-
-  describe('doCommit() branching', () => {
-    it('calls buildCommit with empty object when utxos is empty and no blueprintTx', async () => {
-      const p = wrangler.waitForHeadOpen({ utxos: [] }, 10000);
-      await flushAsync();
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      expect(mockHttp.buildCommit).toHaveBeenCalledWith({});
-
-      emitMessage({ tag: 'HeadIsOpen' });
-      await expect(p).resolves.toBeUndefined();
-    });
-
-    it('calls buildCommit for single UTxO without blueprintTx', async () => {
-      const p = wrangler.waitForHeadOpen({ utxos: [{ txHash: 'abc123', outputIndex: 0 }] }, 10000);
-      await flushAsync();
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      expect(mockBlockfrost.fetchUTxOs).toHaveBeenCalledWith('abc123', 0);
-      expect(mockHttp.buildCommit).toHaveBeenCalled();
-
-      emitMessage({ tag: 'HeadIsOpen' });
-      await expect(p).resolves.toBeUndefined();
-    });
-
-    it('rejects for multiple UTxOs without blueprintTx', async () => {
-      const commitArgs = {
-        utxos: [
-          { txHash: 'abc123', outputIndex: 0 },
-          { txHash: 'def456', outputIndex: 1 },
-        ],
-      };
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000).catch((e) => e);
-      await flushAsync();
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      const err = await p;
-      expect(err).toBeInstanceOf(Error);
-      expect((err as Error).message).toMatch('Multiple UTxOs without a blueprintTx');
-    });
-
-    it('calls buildCommit with blueprint when blueprintTx is provided', async () => {
-      const blueprintTx = { type: 'Tx ConwayEra' as const, cborHex: 'deadbeef', description: '' };
-      const commitArgs = { utxos: [{ txHash: 'abc123', outputIndex: 0 }], blueprintTx };
-      const p = wrangler.waitForHeadOpen(commitArgs, 10000);
-      await flushAsync();
-
-      emitMessage({ tag: 'HeadIsInitializing' });
-      await flushAsync();
-
-      expect(mockHttp.buildCommit).toHaveBeenCalledWith(expect.objectContaining({ blueprintTx }));
-
-      emitMessage({ tag: 'HeadIsOpen' });
-      await expect(p).resolves.toBeUndefined();
     });
   });
 
@@ -802,6 +719,135 @@ describe('Wrangler', () => {
       vi.advanceTimersByTime(3000);
 
       await expect(p).rejects.toThrow('Timeout waiting for incremental commit finalization');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // depositResilient
+  // -------------------------------------------------------------------------
+
+  describe('depositResilient()', () => {
+    /** Make the next getHeadStatus() resolve with the given headStatus. */
+    function greetWith(status: string) {
+      const origOn = mockWs.on.getMockImplementation()!;
+      mockWs.on.mockImplementationOnce((event: string, cb: (msg: HydraWsMessage) => void) => {
+        origOn(event, cb);
+        if (event === 'message') setTimeout(() => cb({ tag: 'Greetings', headStatus: status } as HydraWsMessage), 0);
+        return mockWs;
+      });
+    }
+
+    it('resolves on CommitFinalized and returns the L1 tx id (first attempt)', async () => {
+      greetWith('Open');
+      const getUtxo = vi.fn<() => Promise<{ txHash: string; outputIndex: number }>>().mockResolvedValue({
+        txHash: 'dep1',
+        outputIndex: 0,
+      });
+      const sign = vi.fn<(c: string) => Promise<string>>().mockResolvedValue('signed-cbor');
+
+      const p = wrangler.depositResilient(getUtxo, sign, { maxAttempts: 3, finalizeTimeoutMs: 5000 });
+      await flushAsync();
+      emitMessage({ tag: 'CommitFinalized' });
+
+      await expect(p).resolves.toBe('tx-hash');
+      expect(getUtxo).toHaveBeenCalledTimes(1);
+      expect(sign).toHaveBeenCalledWith('raw-tx-hex');
+      expect(mockBlockfrost.submitTx).toHaveBeenCalledWith('signed-cbor');
+    });
+
+    it('retries with a fresh UTxO after a finalize timeout, then succeeds', async () => {
+      greetWith('Open');
+      mockHttp.getPendingCommits.mockResolvedValue(['stranded-deposit']);
+      const getUtxo = vi
+        .fn<() => Promise<{ txHash: string; outputIndex: number }>>()
+        .mockResolvedValueOnce({ txHash: 'dep1', outputIndex: 0 })
+        .mockResolvedValueOnce({ txHash: 'dep2', outputIndex: 0 });
+      const sign = vi.fn<(c: string) => Promise<string>>().mockResolvedValue('signed');
+
+      const p = wrangler.depositResilient(getUtxo, sign, { maxAttempts: 3, finalizeTimeoutMs: 5000 });
+      await flushAsync();
+      // Attempt 1 never finalizes → advance past the per-attempt timeout
+      await vi.advanceTimersByTimeAsync(5000);
+      await flushAsync();
+      // Attempt 2 is now in flight — finalize it
+      emitMessage({ tag: 'CommitFinalized' });
+
+      await expect(p).resolves.toBe('tx-hash');
+      expect(getUtxo).toHaveBeenCalledTimes(2);
+    });
+
+    it('throws after maxAttempts exhausted', async () => {
+      greetWith('Open');
+      mockHttp.getPendingCommits.mockResolvedValue(['stranded']);
+      const getUtxo = vi
+        .fn<() => Promise<{ txHash: string; outputIndex: number }>>()
+        .mockResolvedValue({ txHash: 'dep', outputIndex: 0 });
+      const sign = vi.fn<(c: string) => Promise<string>>().mockResolvedValue('signed');
+
+      const p = wrangler.depositResilient(getUtxo, sign, { maxAttempts: 2, finalizeTimeoutMs: 5000 }).catch((e) => e);
+      await flushAsync();
+      await vi.advanceTimersByTimeAsync(5000); // attempt 1 timeout
+      await flushAsync();
+      await vi.advanceTimersByTimeAsync(5000); // attempt 2 timeout
+
+      const err = await p;
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toMatch('failed to finalize after 2 attempts');
+    });
+
+    it('rejects when head is not Open', async () => {
+      greetWith('Idle');
+      const p = wrangler.depositResilient(vi.fn(), vi.fn(), {}).catch((e) => e);
+      await flushAsync();
+
+      const err = await p;
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toMatch('Cannot deposit: head is "Idle"');
+    });
+
+    it('re-drafts (same UTxO) after a transient stale-input submit error, then succeeds', async () => {
+      greetWith('Open');
+      mockBlockfrost.submitTx
+        .mockRejectedValueOnce(new Error('Hydra HTTP 400 on submit: BadInputsUTxO (stale fee input)'))
+        .mockResolvedValue('tx-hash');
+      const getUtxo = vi.fn<() => Promise<{ txHash: string; outputIndex: number }>>().mockResolvedValue({
+        txHash: 'dep1',
+        outputIndex: 0,
+      });
+      const sign = vi.fn<(c: string) => Promise<string>>().mockResolvedValue('signed');
+
+      const p = wrangler.depositResilient(getUtxo, sign, {
+        maxAttempts: 1,
+        finalizeTimeoutMs: 5000,
+        submitRetries: 3,
+        submitRetryDelayMs: 1000,
+      });
+      await flushAsync();
+      // First submit rejected (transient) → wait the re-draft delay → submit again
+      await vi.advanceTimersByTimeAsync(1000);
+      await flushAsync();
+      emitMessage({ tag: 'CommitFinalized' });
+
+      await expect(p).resolves.toBe('tx-hash');
+      expect(mockBlockfrost.submitTx).toHaveBeenCalledTimes(2); // re-drafted once
+      expect(getUtxo).toHaveBeenCalledTimes(1); // same UTxO, not a fresh-UTxO retry
+    });
+
+    it('does not re-draft on a non-transient submit error', async () => {
+      greetWith('Open');
+      mockBlockfrost.submitTx.mockRejectedValue(new Error('fatal: signing key mismatch'));
+      const getUtxo = vi
+        .fn<() => Promise<{ txHash: string; outputIndex: number }>>()
+        .mockResolvedValue({ txHash: 'dep1', outputIndex: 0 });
+      const sign = vi.fn<(c: string) => Promise<string>>().mockResolvedValue('signed');
+
+      const p = wrangler.depositResilient(getUtxo, sign, { maxAttempts: 1, submitRetries: 3 }).catch((e) => e);
+      await flushAsync();
+
+      const err = await p;
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toMatch('signing key mismatch');
+      expect(mockBlockfrost.submitTx).toHaveBeenCalledTimes(1); // no re-draft
     });
   });
 });

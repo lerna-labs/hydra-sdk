@@ -131,10 +131,10 @@ describe('HydraWebSocket', () => {
       await flushAsync();
 
       emitWsMessage({ tag: 'Greetings', headStatus: 'Idle' });
-      emitWsMessage({ tag: 'HeadIsInitializing', headId: 'abc', parties: [] });
+      emitWsMessage({ tag: 'TxValid', transactionId: 'abc' });
       emitWsMessage({ tag: 'HeadIsOpen', utxo: {} });
 
-      expect(messages).toEqual(['Greetings', 'HeadIsInitializing', 'HeadIsOpen']);
+      expect(messages).toEqual(['Greetings', 'TxValid', 'HeadIsOpen']);
     });
   });
 
@@ -152,9 +152,6 @@ describe('HydraWebSocket', () => {
     it('updates status from state transition messages', async () => {
       await hydraWs.connect();
       await flushAsync();
-
-      emitWsMessage({ tag: 'HeadIsInitializing', headId: 'abc', parties: [] });
-      expect(hydraWs.getStatus()).toBe('INITIALIZING');
 
       emitWsMessage({ tag: 'HeadIsOpen', utxo: {} });
       expect(hydraWs.getStatus()).toBe('OPEN');

@@ -36,6 +36,17 @@ export class HydraHttpClient {
     return this.get('/snapshot/utxo');
   }
 
+  /**
+   * List the transaction ids of deposits that are pending (observed but not yet
+   * incremented into the head). `GET /commits`
+   *
+   * A deposit can linger here if an L1 rollback cancelled its increment — see
+   * {@link recoverable deposits}. Used to detect a stuck deposit and retry.
+   */
+  async getPendingCommits(): Promise<string[]> {
+    return this.get('/commits');
+  }
+
   /** Fetch protocol parameters. `GET /protocol-parameters` */
   async getProtocolParameters(): Promise<unknown> {
     return this.get('/protocol-parameters');

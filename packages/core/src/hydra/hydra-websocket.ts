@@ -4,7 +4,6 @@ import type { ClientInput, ConnectionState, HeadStatus, HydraStatus, HydraWsMess
 
 export const HEAD_STATUS_TO_HYDRA: Record<HeadStatus, HydraStatus> = {
   Idle: 'IDLE',
-  Initializing: 'INITIALIZING',
   Open: 'OPEN',
   Closed: 'CLOSED',
   FanoutPossible: 'FANOUT_POSSIBLE',
@@ -12,7 +11,6 @@ export const HEAD_STATUS_TO_HYDRA: Record<HeadStatus, HydraStatus> = {
 };
 
 export const TAG_TO_HYDRA: Record<string, HydraStatus> = {
-  HeadIsInitializing: 'INITIALIZING',
   HeadIsOpen: 'OPEN',
   HeadIsClosed: 'CLOSED',
   ReadyToFanout: 'FANOUT_POSSIBLE',

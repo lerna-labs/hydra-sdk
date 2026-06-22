@@ -1,6 +1,6 @@
 {
   "name": "@lerna-labs/hydra-sdk",
-  "version": "1.0.0-beta.29",
+  "version": "2.0.0-beta.1",
   "description": "TypeScript SDK for managing Cardano Hydra Heads — lifecycle, UTxO queries, wallet management, transaction submission, and signature verification",
   "keywords": [
     "cardano",
