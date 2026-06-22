@@ -13,7 +13,7 @@ monitoring.
 | Bring up / down | `make ipfs-start` / `make ipfs-stop` (project name `ipfs`) |
 | CLI | `alias ipfs='docker exec ipfs-node ipfs'` — never run `ipfs daemon` through this alias, the container already runs it |
 | Repo on disk | `${IPFS_DATA_DIR:-./data/ipfs}/data` — bind-mounted, survives container recreation |
-| Ports | 5001 API/WebUI, 8080 gateway, 4001 swarm (TCP+UDP) |
+| Ports | 5001 API/WebUI + 8080 gateway (loopback-only, see §3), 4001 swarm (public, TCP+UDP) |
 | Metrics | `http://localhost:5001/debug/metrics/prometheus` (scraped by Prometheus job `ipfs`) |
 | Grafana dashboard | "IPFS Node" (uid `ipfs-node-dashboard`) |
 
@@ -24,16 +24,22 @@ but **no peer can dial it**. You will see content "pinned locally" yet remote
 fetches hang, and `ipfs-check` will return `ConnectionError: failed to dial:
 context deadline exceeded` with only circuit-relay addresses advertised.
 
-The compose file publishes `4001/tcp` and `4001/udp` by default. You must also:
+The compose file publishes `4001/tcp` and `4001/udp` on all interfaces by
+default (the RPC 5001 and gateway 8080 are loopback-only — see §3). Swarm 4001 is
+the **only** IPFS port that should be allowed inbound on the host firewall:
 
 ```bash
-# Host firewall (Ubuntu/ufw example)
+# Host firewall (Ubuntu/ufw example) — allow ONLY the swarm port
 sudo ufw allow 4001/tcp
 sudo ufw allow 4001/udp
+# Do NOT open 5001 or 8080 — they are bound to 127.0.0.1 and must stay off-host.
 
-# Verify from OFF the server:
+# Verify swarm is reachable from OFF the server:
 nc -zv <your-public-ip> 4001
 nc -zvu <your-public-ip> 4001
+
+# And confirm the admin RPC is NOT reachable from off-host (should fail/refuse):
+nc -zv <your-public-ip> 5001
 ```
 
 Cloud providers (OVH, Hetzner, AWS SG, etc.) may have their own edge firewall.
@@ -77,23 +83,28 @@ make ipfs-stop && make ipfs-start
 The first daemon start after enabling this is slower (it builds a routing
 table snapshot). Subsequent starts are normal. Recommended for any public node.
 
-## 3. Remote WebUI access requires CORS config
+## 3. Remote WebUI / RPC access — tunnel, don't expose
 
-The WebUI at `http://127.0.0.1:5001/webui` works locally out of the box. If you
-want to access the WebUI from another host (pointed at this node's RPC), Kubo
-will reject the cross-origin XHR calls unless you allow-list the origin:
+The RPC API (5001) and the gateway (8080) are bound to the host loopback
+(`127.0.0.1`) in `docker-compose.ipfs.yml`. The WebUI at
+`http://127.0.0.1:5001/webui` works locally out of the box; nothing off-host can
+reach the RPC. **This is deliberate** — port 5001 is an unauthenticated admin
+RPC, so anyone who can reach it can rewrite the node's config, pin arbitrary
+content, and read its private keys.
+
+To administer the node from your laptop, forward the loopback RPC over SSH rather
+than widening the bind or opening CORS:
 
 ```bash
-ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin \
-  '["https://your-remote-host","http://127.0.0.1:5001"]'
-ipfs config --json API.HTTPHeaders.Access-Control-Allow-Methods \
-  '["PUT","POST","GET"]'
-docker restart ipfs-node
+# On your machine — forwards your local 5001 to the node's loopback 5001
+ssh -L 5001:127.0.0.1:5001 <user>@<host>
+# then browse http://127.0.0.1:5001/webui locally — same-origin, no CORS needed
 ```
 
-**Never set `Allow-Origin` to `*`.** Port 5001 is an unauthenticated admin RPC
-— anyone who can reach it can modify the node's config, pin arbitrary content,
-and read private keys. Keep 5001 firewalled to trusted IPs if exposed at all.
+Do **not** change the port bind to `0.0.0.0`, and do **not** set
+`API.HTTPHeaders.Access-Control-Allow-Origin` to `*` (or any remote origin) on
+the RPC — that re-opens the admin API to the network. The tunnel gives you the
+WebUI with no exposure.
 
 ## 4. Non-RFC1918 Docker bridge subnets leak into announcements
 
