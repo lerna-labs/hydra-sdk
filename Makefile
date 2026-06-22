@@ -91,7 +91,7 @@ DOCKER_MONITORING := docker compose -f $(MONITORING_COMPOSE) -p $(MONITORING_PRO
 # List of make commands
 HYDRA_TARGETS := hydra-start hydra-stop hydra-down hydra-logs hydra-restart hydra-clean hydra-rebuild hydra-pull hydra-status hydra-stats
 OFFLINE_TARGETS := offline-start offline-stop offline-status offline-logs
-CARDANO_TARGETS := cardano-start cardano-stop cardano-logs cardano-status
+CARDANO_TARGETS := cardano-start cardano-stop cardano-logs cardano-status dolos-start dolos-stop
 IPFS_TARGETS := ipfs-start ipfs-stop ipfs-down ipfs-logs ipfs-status
 MONITORING_TARGETS := monitoring-start monitoring-stop monitoring-down monitoring-restart monitoring-logs gen-prometheus-config
 UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert
@@ -138,13 +138,20 @@ _prepare-directories: _guard-network
 	fi
 
 cardano-start: _prepare-directories
-	$(DOCKER_CARDANO) up -d
+	$(DOCKER_CARDANO) up -d   # cardano-node only; Dolos is optional (make dolos-start)
 
 cardano-stop: _guard-network
-	$(DOCKER_CARDANO) stop
+	$(DOCKER_CARDANO) --profile dolos stop   # stops the node and Dolos if running
 
 cardano-logs: _guard-network
 	$(DOCKER_CARDANO) logs cardano-node -ft --tail=50 | grep -Ev "TrInbound|TrPromoted" || true
+
+# ── Dolos (optional tx3/TRP chain backend) ───────────────────────────
+dolos-start: _guard-network _prepare-directories
+	$(DOCKER_CARDANO) --profile dolos up -d cardano-dolos
+
+dolos-stop: _guard-network
+	$(DOCKER_CARDANO) --profile dolos rm -sf cardano-dolos
 
 cardano-status: _guard-network
 	@MAGIC_ARG="--testnet-magic $${CARDANO_TESTNET_MAGIC:-1}"; \
@@ -333,7 +340,7 @@ dolos-init: _guard-network _prepare-directories
 	@echo "✅ Dolos initialized for $(NETWORK) — config + genesis saved to data/$(NETWORK)/dolos/"
 
 dolos-logs: _guard-network
-	$(DOCKER_CARDANO) logs cardano-dolos -ft --tail=50
+	$(DOCKER_CARDANO) --profile dolos logs cardano-dolos -ft --tail=50
 
 gen-tls-cert: _guard-network
 	@echo "Preparing to generate self-signed cert for network=$(NETWORK)..."
@@ -442,9 +449,12 @@ help:
 	@echo "Usage: make NETWORK=<network> [INSTANCE=<id>] <target>"
 	@echo ""
 	@echo "── Cardano Node & Dolos ────────────────────────────────────"
-	@echo "  cardano-start            Start Cardano node + Dolos for NETWORK"
-	@echo "  cardano-stop             Stop Cardano node + Dolos"
+	@echo "  cardano-start            Start Cardano node for NETWORK (Dolos NOT started)"
+	@echo "  cardano-stop             Stop Cardano node (and Dolos if running)"
 	@echo "  cardano-logs             Tail Cardano node logs"
+	@echo "  cardano-status           Show node sync status (syncProgress)"
+	@echo "  dolos-start              Start Dolos (optional; only for tx3/TRP)"
+	@echo "  dolos-stop               Stop + remove Dolos"
 	@echo "  dolos-logs               Tail Dolos logs"
 	@echo "  dolos-init               Bootstrap Dolos genesis files (one-time)"
 	@echo ""

@@ -210,9 +210,11 @@ The offline head exercises the same SDK paths deterministically — see
   blocks). Close→fanout waits the contestation period (`--contestation-period`,
   ~120s on this instance). Tune `CONTESTATION_PERIOD` / `DEPOSIT_PERIOD` in
   `.preprod.e2e.env` for faster loops.
-- **Dolos crash-loop.** `cardano-dolos-preprod` is unrelated to this flow (it
-  backs tx3/TRP, which we bypass by submitting L2 txs via `NewTx`). It fails with
-  `missing configuration field "upstream"` and can be ignored for the E2E.
+- **Dolos is optional.** Dolos only backs tx3/TRP chain queries, which this flow
+  doesn't use (L2 txs go via `NewTx`). It is now behind the `dolos` compose
+  profile, so `make cardano-start` runs **only** the node. Start it with
+  `make dolos-start` if you need TRP (its `dolos-init` genesis bootstrap must
+  have been run first).
 - **`EXPRESS_IMAGE` warning.** `preprod-head.sh` sets a placeholder so docker
   compose validates; the express-api service is never started.
 ```

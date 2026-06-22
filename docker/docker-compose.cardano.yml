@@ -18,6 +18,10 @@ services:
   cardano-dolos:
     container_name: cardano-dolos-${NETWORK}
     image: ${DOLOS_IMAGE}
+    # Optional: only needed for tx3/TRP chain queries. Behind the "dolos" profile
+    # so a plain `up` (make cardano-start) runs only the node. Start it explicitly
+    # with `make dolos-start`.
+    profiles: ["dolos"]
     restart: unless-stopped
     working_dir: /data
     depends_on:
