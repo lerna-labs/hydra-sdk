@@ -51,11 +51,16 @@ export interface CommitBlueprintPayload {
 
 // ── Head Status ──────────────────────────────────────────────────────
 
-/** Possible Hydra head states as reported in the `Greetings` message (mixed-case). */
-export type HeadStatus = 'Idle' | 'Initializing' | 'Open' | 'Closed' | 'FanoutPossible' | 'Final';
+/**
+ * Possible Hydra head states as reported in the `Greetings` message (mixed-case).
+ *
+ * As of Hydra v2 (ADR-33) the head opens directly into `Open` — there is no
+ * longer an `Initializing` phase.
+ */
+export type HeadStatus = 'Idle' | 'Open' | 'Closed' | 'FanoutPossible' | 'Final';
 
 /** Hydra status values (uppercase, as used by HydraProvider status tracking). */
-export type HydraStatus = 'IDLE' | 'INITIALIZING' | 'OPEN' | 'CLOSED' | 'FANOUT_POSSIBLE' | 'FINAL';
+export type HydraStatus = 'IDLE' | 'OPEN' | 'CLOSED' | 'FANOUT_POSSIBLE' | 'FINAL';
 
 /** @deprecated Use HydraStatus */
 export type hydraStatus = HydraStatus;
@@ -89,7 +94,6 @@ export type ConfirmedSnapshot =
 /** Messages that can be sent to the Hydra node over WebSocket. */
 export type ClientInput =
   | { tag: 'Init' }
-  | { tag: 'Abort' }
   | { tag: 'NewTx'; transaction: HydraTransaction }
   | { tag: 'Close' }
   | { tag: 'SafeClose' }
@@ -155,24 +159,10 @@ export interface HydraHeadInfo {
 }
 
 // ── Head lifecycle messages ──────────────────────────────────────────
-
-export interface HeadIsInitializingMessage {
-  tag: 'HeadIsInitializing';
-  headId: string;
-  parties: { vkey: string }[];
-  seq: number;
-  timestamp: string;
-  [key: string]: unknown;
-}
-
-export interface CommittedMessage {
-  tag: 'Committed';
-  party: { vkey: string };
-  utxo: HydraUTxOs;
-  seq: number;
-  timestamp: string;
-  [key: string]: unknown;
-}
+//
+// As of Hydra v2 (ADR-33) the head-initialization phase is gone: `Init`
+// opens the head directly with an empty UTxO set. There are no longer any
+// `HeadIsInitializing`, `Committed`, or `HeadIsAborted` server outputs.
 
 export interface HeadIsOpenMessage {
   tag: 'HeadIsOpen';
@@ -206,15 +196,6 @@ export interface HeadIsContestedMessage {
 export interface ReadyToFanoutMessage {
   tag: 'ReadyToFanout';
   headId: string;
-  seq: number;
-  timestamp: string;
-  [key: string]: unknown;
-}
-
-export interface HeadIsAbortedMessage {
-  tag: 'HeadIsAborted';
-  headId: string;
-  utxo: HydraUTxOs;
   seq: number;
   timestamp: string;
   [key: string]: unknown;
@@ -495,17 +476,6 @@ export interface NodeUnsyncedMessage {
 
 // ── Misc messages ────────────────────────────────────────────────────
 
-export interface IgnoredHeadInitializingMessage {
-  tag: 'IgnoredHeadInitializing';
-  headId: string;
-  contestationPeriod: number;
-  parties: { vkey: string }[];
-  participants: string[];
-  seq: number;
-  timestamp: string;
-  [key: string]: unknown;
-}
-
 export interface EventLogRotatedMessage {
   tag: 'EventLogRotated';
   seq: number;
@@ -527,13 +497,10 @@ export type ServerOutput =
   // Greetings
   | GreetingsMessage
   // Head lifecycle
-  | HeadIsInitializingMessage
-  | CommittedMessage
   | HeadIsOpenMessage
   | HeadIsClosedMessage
   | HeadIsContestedMessage
   | ReadyToFanoutMessage
-  | HeadIsAbortedMessage
   | HeadIsFinalizedMessage
   // Transactions & snapshots
   | TxValidMessage
@@ -570,7 +537,6 @@ export type ServerOutput =
   | NodeSyncedMessage
   | NodeUnsyncedMessage
   // Misc
-  | IgnoredHeadInitializingMessage
   | EventLogRotatedMessage
   // Catch-all
   | UnknownMessage;

@@ -60,6 +60,9 @@
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
+  "overrides": {
+    "libsodium-wrappers-sumo": "0.7.15"
+  },
   "dependencies": {
     "@emurgo/cardano-message-signing-nodejs": "^1.1.0",
     "@emurgo/cardano-serialization-lib-nodejs": "^15.0.3",

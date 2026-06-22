@@ -14,7 +14,6 @@ import type {
 
 const HYDRA_TO_HEAD_STATUS: Record<HydraStatus, HeadStatus> = {
   IDLE: 'Idle',
-  INITIALIZING: 'Initializing',
   OPEN: 'Open',
   CLOSED: 'Closed',
   FANOUT_POSSIBLE: 'FanoutPossible',
@@ -122,7 +121,7 @@ export class HydraMonitor extends EventEmitter {
    * Summary of Hydra head info derived from live state plus the last Greetings.
    *
    * `headStatus` and `headId` reflect the current state tracked from transition
-   * messages (`HeadIsInitializing`, `HeadIsOpen`, etc.), not the snapshot taken
+   * messages (`HeadIsOpen`, `HeadIsClosed`, etc.), not the snapshot taken
    * at connection time. The remaining fields (node version, participants,
    * contestation period, network info) come from the cached Greetings since
    * they are static for the life of the head.
@@ -223,15 +222,12 @@ export class HydraMonitor extends EventEmitter {
       if (mapped) this.updateStatus(mapped);
       const greetingHeadId = (msg as { hydraHeadId?: string }).hydraHeadId;
       if (greetingHeadId) this._headId = greetingHeadId;
-    } else if (msg.tag === 'HeadIsAborted') {
-      this.updateStatus('IDLE');
-      this._headId = null;
     } else {
       const mapped = TAG_TO_HYDRA[msg.tag];
       if (mapped) this.updateStatus(mapped);
       // Track headId from transition messages (Greetings may not include
-      // it for a fresh node — HeadIsInitializing is the first place it
-      // reliably appears). Skipped for HeadIsAborted, which clears it above.
+      // it for a fresh node — under Hydra v2's direct-open flow, HeadIsOpen
+      // is the first place it reliably appears).
       const msgHeadId = (msg as { headId?: unknown }).headId;
       if (typeof msgHeadId === 'string' && msgHeadId) {
         this._headId = msgHeadId;

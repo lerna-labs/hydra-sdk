@@ -2,7 +2,7 @@
   "schema": "lerna-labs/api-snapshot@v1",
   "packages": {
     "@lerna-labs/hydra-sdk": {
-      "version": "1.0.0-beta.29",
+      "version": "2.0.0-beta.1",
       "exports": [
         {
           "name": "BECH32_DECODE_LIMIT",
@@ -389,7 +389,7 @@
             {
               "name": "startHead",
               "kind": "method",
-              "signature": "(commitArgs: CommitArgs) => Promise<void>"
+              "signature": "() => Promise<void>"
             },
             {
               "name": "waitForHeadClose",
@@ -399,7 +399,7 @@
             {
               "name": "waitForHeadOpen",
               "kind": "method",
-              "signature": "(commitArgs: CommitArgs, timeoutMs?: number) => Promise<void>"
+              "signature": "(timeoutMs?: number) => Promise<void>"
             },
             {
               "name": "ws",
