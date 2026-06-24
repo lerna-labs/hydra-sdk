@@ -89,7 +89,7 @@ MONITORING_PROJECT := monitoring
 DOCKER_MONITORING := docker compose -f $(MONITORING_COMPOSE) -p $(MONITORING_PROJECT)
 
 # List of make commands
-HYDRA_TARGETS := hydra-start hydra-stop hydra-down hydra-logs hydra-restart hydra-clean hydra-rebuild hydra-pull hydra-status hydra-stats
+HYDRA_TARGETS := hydra-start hydra-stop hydra-down hydra-logs hydra-restart hydra-clean hydra-rebuild hydra-pull hydra-status hydra-stats middleware-reload
 OFFLINE_TARGETS := offline-start offline-stop offline-status offline-logs
 CARDANO_TARGETS := cardano-start cardano-stop cardano-logs cardano-status dolos-start dolos-stop
 IPFS_TARGETS := ipfs-start ipfs-stop ipfs-down ipfs-logs ipfs-status
@@ -227,6 +227,31 @@ hydra-restart: _assert-middleware
 hydra-rebuild: _assert-middleware
 	$(DOCKER_HYDRA) build --no-cache --pull && \
 	$(MAKE) hydra-start
+
+# Pull policy for middleware-reload. Default `never` keeps the local-hotfix path
+# offline (a local tag like ekklesia-hydra:local is never fetched). Override with
+# PULL=always to refresh a moving remote tag (e.g. ghcr.io/...:latest|:staging)
+# from the registry before recreating. (`missing` pulls only if absent locally.)
+PULL ?= never
+
+# Hot-swap ONLY the middleware (express-api) on a running, healthy instance —
+# hydra-node and hydra-trp are left untouched (--no-deps). Intended for shipping
+# a middleware hotfix without bouncing the head. Uses EXPRESS_IMAGE from the
+# instance env (e.g. a local tag like ekklesia-hydra:local). Optionally (re)build
+# that image first by passing a build context, or refresh a remote tag with PULL:
+#   make NETWORK=preprod INSTANCE=e2e middleware-reload                              # local image, no pull
+#   make NETWORK=preprod INSTANCE=e2e middleware-reload PULL=always                  # refresh ghcr.io/...:latest|:staging
+#   make NETWORK=preprod INSTANCE=e2e middleware-reload EXPRESS_BUILD_CONTEXT=../ekklesia-hydra
+#   make NETWORK=preprod INSTANCE=e2e middleware-reload \
+#       EXPRESS_BUILD_CONTEXT=. EXPRESS_DOCKERFILE=docker/Dockerfile.express
+middleware-reload: _assert-middleware
+	@if [ -n "$(EXPRESS_BUILD_CONTEXT)" ]; then \
+	  echo "🔨 Building $$EXPRESS_IMAGE from $(EXPRESS_BUILD_CONTEXT)$(if $(EXPRESS_DOCKERFILE), (-f $(EXPRESS_DOCKERFILE)),)..."; \
+	  docker build -t "$$EXPRESS_IMAGE" $(if $(EXPRESS_DOCKERFILE),-f "$(EXPRESS_DOCKERFILE)" ,)"$(EXPRESS_BUILD_CONTEXT)"; \
+	fi
+	@echo "♻️  Recreating express-api ($$EXPRESS_IMAGE) on $(NETWORK)/$(INSTANCE) [--pull $(PULL)] — hydra-node + trp untouched..."
+	$(DOCKER_HYDRA) up -d --no-deps --pull $(PULL) --force-recreate express-api
+	@echo "✅ Middleware reloaded. Tail logs: make NETWORK=$(NETWORK) INSTANCE=$(INSTANCE) hydra-logs"
 
 hydra-pull: _assert-middleware
 	$(DOCKER_HYDRA) pull
@@ -480,6 +505,7 @@ help:
 	@echo "  hydra-clean              Stop, remove containers + orphans"
 	@echo "  hydra-restart            Restart Hydra services"
 	@echo "  hydra-rebuild            Rebuild images (no cache) and start"
+	@echo "  middleware-reload        Hot-swap express-api only (node/trp untouched; PULL=always for remote tags)"
 	@echo "  hydra-pull               Pull latest images (use before restart)"
 	@echo "  hydra-logs               Tail Hydra service logs"
 	@echo "  hydra-status             Show container status"

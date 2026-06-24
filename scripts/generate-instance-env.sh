@@ -81,8 +81,13 @@ bump() {
   echo $((base + inc))
 }
 
-# Read base values (fall back to sensible defaults if not present)
-get_var() { grep -E "^$1=" "$2" | head -n1 | cut -d= -f2-; }
+# Read base values (fall back to sensible defaults if not present).
+# The trailing `|| true` is required: under `set -euo pipefail`, a missing
+# var makes grep exit non-zero (and `head` closing the pipe can SIGPIPE grep),
+# which would abort the whole script before the `${VAR:-default}` fallbacks
+# below can apply. Optional vars (e.g. DOLOS_TRP_PORT when Dolos is unused)
+# must be allowed to be absent.
+get_var() { grep -E "^$1=" "$2" | head -n1 | cut -d= -f2- || true; }
 
 API_PORT=$(get_var API_PORT "${BASE_ENV}");      API_PORT=${API_PORT:-4001}
 LISTEN_PORT=$(get_var LISTEN_PORT "${BASE_ENV}");LISTEN_PORT=${LISTEN_PORT:-5001}
