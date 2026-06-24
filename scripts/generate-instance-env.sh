@@ -116,6 +116,20 @@ else
   X_API_KEY=$(date +%s%N | sha256sum | cut -c1-32)
 fi
 
+# Strong random CLOSE_TOKEN — the admin token the middleware (env CLOSE_TOKEN)
+# requires to close/shut down the head. Generated per instance so that a
+# reachable middleware cannot be closed with the weak built-in default. Prefer a
+# 32-byte (256-bit) hex string; fall back to concatenated UUIDs / a hash.
+if command -v openssl >/dev/null 2>&1; then
+  CLOSE_TOKEN=$(openssl rand -hex 32)
+elif [[ -r /proc/sys/kernel/random/uuid ]]; then
+  CLOSE_TOKEN="$(cat /proc/sys/kernel/random/uuid)$(cat /proc/sys/kernel/random/uuid)"
+elif command -v uuidgen >/dev/null 2>&1; then
+  CLOSE_TOKEN="$(uuidgen)$(uuidgen)"
+else
+  CLOSE_TOKEN=$(date +%s%N | sha256sum | cut -c1-64)
+fi
+
 cat > "${NEW_ENV}" <<EOF
 # ── Network: ${NETWORK} Instance: ${INSTANCE} overrides (auto-generated) ─────────────────────
 INSTANCE=${INSTANCE}
@@ -136,6 +150,10 @@ TRP_URL=http://hydra-trp-\${NETWORK}-\${INSTANCE}:\${TRP_PORT}
 
 # The header value for x-api-key that Express Middleware will check for
 X_API_KEY=${X_API_KEY}
+
+# Admin token the middleware requires to close/shut down the head (CLOSE_TOKEN).
+# Auto-generated strong random value — never replace with a guessable token.
+CLOSE_TOKEN=${CLOSE_TOKEN}
 
 # EXPRESS_IMAGE=ghcr.io/lerna-labs/ekklesia-hydra:branch-main
 EOF
