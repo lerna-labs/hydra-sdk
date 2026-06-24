@@ -89,7 +89,7 @@ MONITORING_PROJECT := monitoring
 DOCKER_MONITORING := docker compose -f $(MONITORING_COMPOSE) -p $(MONITORING_PROJECT)
 
 # List of make commands
-HYDRA_TARGETS := hydra-start hydra-stop hydra-down hydra-logs hydra-restart hydra-clean hydra-rebuild hydra-pull hydra-status hydra-stats middleware-reload
+HYDRA_TARGETS := hydra-start hydra-stop hydra-down hydra-logs hydra-restart hydra-clean hydra-rebuild hydra-pull hydra-status hydra-stats middleware-reload trp-reload
 OFFLINE_TARGETS := offline-start offline-stop offline-status offline-logs
 CARDANO_TARGETS := cardano-start cardano-stop cardano-logs cardano-status dolos-start dolos-stop
 IPFS_TARGETS := ipfs-start ipfs-stop ipfs-down ipfs-logs ipfs-status
@@ -252,6 +252,32 @@ middleware-reload: _assert-middleware
 	@echo "♻️  Recreating express-api ($$EXPRESS_IMAGE) on $(NETWORK)/$(INSTANCE) [--pull $(PULL)] — hydra-node + trp untouched..."
 	$(DOCKER_HYDRA) up -d --no-deps --pull $(PULL) --force-recreate express-api
 	@echo "✅ Middleware reloaded. Tail logs: make NETWORK=$(NETWORK) INSTANCE=$(INSTANCE) hydra-logs"
+
+# Hot-swap ONLY hydra-trp (the tx3-hydra TRP) on a running, healthy instance —
+# hydra-node and express-api are left untouched (--no-deps). The TRP analog of
+# middleware-reload, for testing a local TRP build without bouncing the head.
+# Uses HYDRA_TRP_IMAGE from the env (e.g. a local tag like tx3-hydra:local) and
+# honors the same PULL knob (default never; PULL=always to refresh a moving
+# remote tag). Optionally (re)build first via TRP_BUILD_CONTEXT (+ TRP_DOCKERFILE):
+#   make NETWORK=preprod INSTANCE=e2e trp-reload                          # local image, no pull
+#   make NETWORK=preprod INSTANCE=e2e trp-reload PULL=always              # refresh ghcr.io/...:latest|:staging
+#   make NETWORK=preprod INSTANCE=e2e trp-reload TRP_BUILD_CONTEXT=../tx3-hydra
+# NOTE: the TRP config (trp.toml) is NOT regenerated; if it changed, run
+#       `make … gen-trp-config` first. Recreating TRP briefly drops express-api's
+#       TRP connection until the new container is up (express-api auto-reconnects).
+trp-reload: _guard-network _guard-instance
+	@if [ -z "$${HYDRA_TRP_IMAGE:-}" ]; then \
+	  echo "❌ HYDRA_TRP_IMAGE is not set (check .env / .$(NETWORK).$(INSTANCE).env)"; \
+	  echo "   e.g. HYDRA_TRP_IMAGE=tx3-hydra:local"; \
+	  exit 1; \
+	fi
+	@if [ -n "$(TRP_BUILD_CONTEXT)" ]; then \
+	  echo "🔨 Building $$HYDRA_TRP_IMAGE from $(TRP_BUILD_CONTEXT)$(if $(TRP_DOCKERFILE), (-f $(TRP_DOCKERFILE)),)..."; \
+	  docker build -t "$$HYDRA_TRP_IMAGE" $(if $(TRP_DOCKERFILE),-f "$(TRP_DOCKERFILE)" ,)"$(TRP_BUILD_CONTEXT)"; \
+	fi
+	@echo "♻️  Recreating hydra-trp ($$HYDRA_TRP_IMAGE) on $(NETWORK)/$(INSTANCE) [--pull $(PULL)] — hydra-node + express-api untouched..."
+	$(DOCKER_HYDRA) up -d --no-deps --pull $(PULL) --force-recreate hydra-trp
+	@echo "✅ TRP reloaded. Tail logs: make NETWORK=$(NETWORK) INSTANCE=$(INSTANCE) hydra-logs"
 
 hydra-pull: _assert-middleware
 	$(DOCKER_HYDRA) pull
@@ -506,6 +532,7 @@ help:
 	@echo "  hydra-restart            Restart Hydra services"
 	@echo "  hydra-rebuild            Rebuild images (no cache) and start"
 	@echo "  middleware-reload        Hot-swap express-api only (node/trp untouched; PULL=always for remote tags)"
+	@echo "  trp-reload               Hot-swap hydra-trp only (node/express untouched; PULL=always for remote tags)"
 	@echo "  hydra-pull               Pull latest images (use before restart)"
 	@echo "  hydra-logs               Tail Hydra service logs"
 	@echo "  hydra-status             Show container status"
