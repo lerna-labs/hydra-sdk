@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: File an issue
+    url: https://github.com/lerna-labs/ekklesia-docs/issues/new/choose
+    about: Issues for this project are tracked centrally in the ekklesia-docs repository. Please file your issue there.
