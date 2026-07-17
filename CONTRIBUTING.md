@@ -39,6 +39,17 @@ Branch from `development` — it's the active branch and the target for all pull
 
 5. Open a pull request against `development`.
 
+## Referencing issues
+
+`development` is the default branch, so GitHub auto-closes an issue the moment a commit or PR
+merges there if it uses a closing keyword (`Closes`/`Fixes`/`Resolves #NN`) — but a change isn't
+really done until it's promoted through `staging` and lands on `main`. So:
+
+- In commits and PRs targeting `development`, reference issues with `Refs #NN` (a CI check fails
+  the PR if it finds `Closes`/`Fixes`/`Resolves` instead).
+- Issues close automatically once the fix reaches `main` — a workflow scans the promoting PR for
+  `Refs #NN` (and the standard closing keywords) and closes whatever it finds.
+
 ## Filing issues
 
 This repository's issues are tracked centrally in the
