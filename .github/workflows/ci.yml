@@ -63,3 +63,29 @@ jobs:
             echo "::error::No changeset found. Run 'npx changeset' to add one, or apply the 'skip-changelog' label to this PR."
             exit 1
           fi
+
+  no-premature-close:
+    # development is the default branch, so a stray "Closes #NN" here would
+    # auto-close the issue on merge, before the fix ever reaches main. Issues
+    # should only close via .github/workflows/close-promoted-issues.yml, once
+    # promoted to main — use "Refs #NN" in commits/PRs targeting development.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.base_ref == 'development'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Forbid closing keywords on PRs into development
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          git fetch origin "${{ github.event.pull_request.base.ref }}" --depth=1
+          COMMIT_MSGS=$(git log "origin/${{ github.event.pull_request.base.ref }}...HEAD" --format=%B)
+          MATCHES=$(printf '%s\n%s' "$PR_BODY" "$COMMIT_MSGS" | grep -iEo '\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[[:space:]]+#[0-9]+' || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Found a closing keyword targeting development: $(echo "$MATCHES" | tr '\n' ' '). Issues should stay open until promoted to main — use 'Refs #NN' instead of 'Closes/Fixes/Resolves #NN'."
+            exit 1
+          fi

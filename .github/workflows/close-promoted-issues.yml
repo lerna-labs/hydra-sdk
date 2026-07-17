@@ -1,0 +1,53 @@
+name: Close issues promoted to main
+
+# development is the default branch, so GitHub's native "Closes #NN" only
+# auto-closes on merges there. Issues should stay open until the fix is
+# actually live on main (mainnet-ready), so this workflow re-implements
+# closing keyword handling anchored to main instead.
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  close-issues:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect issue references
+        id: refs
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          COMMIT_MSGS=$(git log "$BASE_SHA..$MERGE_SHA" --format=%B 2>/dev/null || true)
+          ISSUES=$(printf '%s\n%s' "$PR_BODY" "$COMMIT_MSGS" \
+            | grep -iEo '\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved|ref|refs)[[:space:]]+#[0-9]+' \
+            | grep -oE '[0-9]+' \
+            | sort -un)
+          {
+            echo "issues<<ISSUES_EOF"
+            echo "$ISSUES"
+            echo "ISSUES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Close referenced issues
+        if: steps.refs.outputs.issues != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUES: ${{ steps.refs.outputs.issues }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          for n in $ISSUES; do
+            gh issue close "$n" --repo "${{ github.repository }}" \
+              --comment "Shipped to \`main\` in $PR_URL." || true
+          done
