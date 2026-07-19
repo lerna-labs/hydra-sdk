@@ -1,0 +1,126 @@
+name: Publish
+
+# Single npm publisher for the monorepo, driven by the branch:
+#   staging -> release-candidate snapshots of the changed packages under the
+#              `rc` dist-tag
+#   main    -> production package releases via Changesets, published to `latest`
+#
+# Both publish through npm trusted publishing (OIDC), so this one workflow file
+# is the single registered trusted publisher for @lerna-labs/hydra-sdk and
+# @lerna-labs/hydra-proof, no NPM_TOKEN is stored, and every publish carries a
+# provenance attestation. The private @lerna-labs/hydra-orchestrator is ignored
+# by Changesets and never published.
+on:
+  push:
+    branches: [main, staging]
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  # Production release from main. changesets/action opens a Version Packages PR
+  # while changesets are pending; once that PR is merged (none pending), it
+  # builds and runs `changeset publish`, publishing each changed package to npm,
+  # pushing its tag, and creating the GitHub Release. Attributed to the Release
+  # Manager App.
+  release:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_MANAGER_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_MANAGER_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Configure git identity for the release bot
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          user_id=$(gh api "/users/${{ steps.app-token.outputs.app-slug }}[bot]" --jq .id)
+          git config --global user.name "${{ steps.app-token.outputs.app-slug }}[bot]"
+          git config --global user.email "${user_id}+${{ steps.app-token.outputs.app-slug }}[bot]@users.noreply.github.com"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing (OIDC) needs npm >= 11.5.1; node 22 ships npm 10.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@11
+
+      - run: npm ci
+
+      - name: Create release PR or publish to npm
+        uses: changesets/action@v1
+        with:
+          version: npm run changeset:version
+          publish: npm run changeset:publish
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
+        env:
+          # No NODE_AUTH_TOKEN: npm publishes via OIDC trusted publishing.
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+  # Release candidate from staging. Publishes a Changesets snapshot
+  # (X.Y.Z-rc-<timestamp>) of the changed packages under the `rc` dist-tag so
+  # downstreams can test unreleased changes. Nothing is committed; the `rc` tag
+  # never moves `latest`. Skipped when there are no pending changesets.
+  rc:
+    if: github.ref_name == 'staging'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@11
+
+      - run: npm ci
+
+      - name: Compute snapshot versions
+        id: snap
+        run: |
+          pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | head -1)
+          if [ -n "$pending" ]; then
+            npx changeset version --snapshot rc
+            echo "has=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has=false" >> "$GITHUB_OUTPUT"
+            echo "No pending changesets; nothing to preview."
+          fi
+
+      - name: Build
+        if: steps.snap.outputs.has == 'true'
+        run: npm run build
+
+      - name: Publish release-candidate previews to npm
+        if: steps.snap.outputs.has == 'true'
+        # changeset publish only publishes packages whose (snapshot) version is
+        # not already on npm, so unchanged packages are skipped automatically.
+        # --no-git-tag: snapshots are ephemeral, never tagged in git.
+        run: npx changeset publish --tag rc --no-git-tag
+
+      - name: Discard snapshot bump
+        if: steps.snap.outputs.has == 'true'
+        run: git checkout -- .

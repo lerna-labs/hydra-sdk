@@ -32,8 +32,7 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true,
-    "tag": "beta"
+    "provenance": true
   },
   "engines": {
     "node": ">=18"
