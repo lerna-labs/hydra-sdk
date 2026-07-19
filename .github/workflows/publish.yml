@@ -64,16 +64,25 @@ jobs:
 
       - run: npm ci
 
-      - name: Create release PR or publish to npm
+      - name: Open or update the Version Packages PR
         uses: changesets/action@v1
         with:
           version: npm run changeset:version
-          publish: npm run changeset:publish
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
         env:
-          # No NODE_AUTH_TOKEN: npm publishes via OIDC trusted publishing.
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      # Publish as a direct job step, not through changesets/action. Its `publish`
+      # runs the command under node's bundled npm (10.x on node 22), which signs
+      # provenance but cannot authenticate OIDC trusted publishing and 404s. A
+      # direct step uses the npm@11 we installed above, which does OIDC. The
+      # script skips packages whose version is already on npm, so this is a no-op
+      # except right after a Version Packages PR merges.
+      - name: Publish released packages to npm
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: node scripts/publish-packages.mjs
 
   # Release candidate from staging. Publishes a Changesets snapshot
   # (X.Y.Z-rc-<timestamp>) of the changed packages under the `rc` dist-tag so
