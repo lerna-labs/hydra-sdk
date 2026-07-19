@@ -24,6 +24,9 @@
     "api:compare": "tsx scripts/compare-api.ts",
     "docs:api": "typedoc",
     "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:publish": "npm run build && changeset publish",
+    "changeset:snapshot": "changeset version --snapshot rc",
     "prepare": "husky"
   },
   "lint-staged": {

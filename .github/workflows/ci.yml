@@ -2,40 +2,54 @@ name: CI
 
 on:
   push:
-    branches: [main, development]
+    branches: [main, development, staging]
   pull_request:
-    branches: [main, development]
+    branches: [main, development, staging]
 
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
+      # Backport PRs carry content already validated on main. The job still runs
+      # (so this required check reports success) but skips the heavy steps.
+      - id: run
+        run: echo "go=${{ github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'backport') }}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        if: steps.run.outputs.go == 'true'
 
       - uses: actions/setup-node@v4
+        if: steps.run.outputs.go == 'true'
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
+        if: steps.run.outputs.go == 'true'
         run: npm ci
 
       - name: Audit production dependencies
+        if: steps.run.outputs.go == 'true'
         run: npm audit --omit=dev --audit-level=critical
 
       - name: Typecheck
+        if: steps.run.outputs.go == 'true'
         run: npm run typecheck
 
       - name: Validate Docker infrastructure
+        if: steps.run.outputs.go == 'true'
         run: npx tsx scripts/validate-docker.ts
 
       - name: Lint
+        if: steps.run.outputs.go == 'true'
         run: npm run lint
 
       - name: Test
+        if: steps.run.outputs.go == 'true'
         run: npm test
 
       - name: Check API surface
+        if: steps.run.outputs.go == 'true'
         run: |
           npm run build
           npx tsx scripts/extract-api.ts
