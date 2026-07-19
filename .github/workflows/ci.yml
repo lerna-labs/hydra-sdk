@@ -83,9 +83,12 @@ jobs:
     # auto-close the issue on merge, before the fix ever reaches main. Issues
     # should only close via .github/workflows/close-promoted-issues.yml, once
     # promoted to main — use "Refs #NN" in commits/PRs targeting development.
+    # Backport PRs (main -> development) legitimately carry main's commits, whose
+    # original messages may include closing keywords, so they are exempt.
     if: >-
       github.event_name == 'pull_request' &&
-      github.base_ref == 'development'
+      github.base_ref == 'development' &&
+      !contains(github.event.pull_request.labels.*.name, 'backport')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
