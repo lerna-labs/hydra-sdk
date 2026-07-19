@@ -9,5 +9,8 @@
   "updateInternalDependencies": "patch",
   "ignore": [
     "@lerna-labs/hydra-orchestrator"
-  ]
+  ],
+  "snapshot": {
+    "useCalculatedVersion": true
+  }
 }
