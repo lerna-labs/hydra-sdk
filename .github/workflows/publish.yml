@@ -116,10 +116,24 @@ jobs:
 
       - name: Publish release-candidate previews to npm
         if: steps.snap.outputs.has == 'true'
-        # changeset publish only publishes packages whose (snapshot) version is
-        # not already on npm, so unchanged packages are skipped automatically.
-        # --no-git-tag: snapshots are ephemeral, never tagged in git.
-        run: npx changeset publish --tag rc --no-git-tag
+        # Publish each package that actually got a snapshot bump (version now
+        # contains -rc-) with plain `npm publish`, which uses OIDC trusted
+        # publishing. `changeset publish` reads the setup-node placeholder token
+        # from the .npmrc and would try token auth instead. Snapshots are
+        # ephemeral, so no git tags are created.
+        run: |
+          for dir in packages/core packages/proof; do
+            ver=$(node -p "require('./$dir/package.json').version")
+            case "$ver" in
+              *-rc-*)
+                echo "Publishing $dir@$ver under rc"
+                npm publish -w "./$dir" --tag rc
+                ;;
+              *)
+                echo "Skipping $dir@$ver (no snapshot bump)"
+                ;;
+            esac
+          done
 
       - name: Discard snapshot bump
         if: steps.snap.outputs.has == 'true'
