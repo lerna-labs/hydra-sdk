@@ -64,6 +64,15 @@ hydra-sdk/
 └── api/               # API surface snapshots (CI-tracked)
 ```
 
+## Contributing
+
+`development` is this repository's default branch. A pull request or commit targeting it must
+reference an issue with `Refs #NN`, not `Closes`/`Fixes`/`Resolves #NN`; CI rejects the closing
+keywords there. A referenced issue closes automatically once the change is promoted to `main`.
+
+See the [organization's CONTRIBUTING guide](https://github.com/lerna-labs/.github/blob/main/CONTRIBUTING.md)
+for everything else: filing issues, changelog entries, and the review process.
+
 ## License
 
 [Apache-2.0](./LICENSE)
