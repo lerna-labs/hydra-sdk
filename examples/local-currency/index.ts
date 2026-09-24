@@ -13,6 +13,7 @@ import {
 } from '@lerna-labs/hydra-sdk';
 import type { MeshWallet } from '@meshsdk/core';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { ArgValue } from 'tx3-sdk/trp';
 import { authHeaderMiddleware } from './middleware.js';
 import { Client } from './protocol.js';
@@ -38,6 +39,17 @@ const txMutex = new Mutex();
 const app = express();
 app.use(express.json());
 app.use(authHeaderMiddleware);
+// Every route below builds or submits a transaction, so a single limiter in
+// front of the whole app is enough to keep a caller from hammering the head
+// with expensive requests.
+app.use(
+  rateLimit({
+    windowMs: 60_000,
+    limit: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
 const port = optionalEnv('EXPRESS_PORT', '3000');
 const TRP_URL = requireEnv('TRP_URL');
 const HYDRA_API_URL = requireEnv('HYDRA_API_URL');
