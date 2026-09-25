@@ -1,6 +1,6 @@
-# @lerna-labs/hydra-sdk
+# @lerna-labs/hydra-proof
 
-## 2.0.1
+## 1.0.0
 
 ### Patch Changes
 
@@ -16,9 +16,3 @@
   Raise the declared `axios` range from `^1.18.0` to `^1.19.0`. Axios 1.18.0 and 1.18.1 declare `form-data: ^4.0.5`, which admits the version vulnerable to GHSA-hmw2-7cc7-3qxx; 1.19.0 and 1.20.0 declare `form-data: ^4.0.6`, the patched floor. With that raised, the root's own `form-data` override is redundant and is removed.
 
   The root's `follow-redirects` override is also removed: every axios version admitted by the declared range already declares `follow-redirects: ^1.16.0`, matching GHSA-r4q5-vmmm-2653's patched version, so the override restated the dependent's own constraint and added nothing.
-
-## 2.0.0
-
-### Minor Changes
-
-- 57b03ab: Add rollback-resilient deposits via `Wrangler.depositResilient`, which automatically re-drafts a deposit when a submit fails on a transient stale-input error. Harden the preprod close and fanout path so the full open to fanout round-trip is proven end to end.
