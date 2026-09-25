@@ -1,6 +1,19 @@
 import type { CommitBlueprintPayload, HydraTransaction, HydraUTxOEntry, HydraUTxOs } from './types.js';
 
 /**
+ * Remove any trailing `/` characters from `url`, scanning back from the end
+ * in linear time. Equivalent to `url.replace(/\/+$/, '')` without the
+ * regexp backtracking that pattern incurs on input with many `/` characters.
+ */
+function stripTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === '/') {
+    end--;
+  }
+  return end === url.length ? url : url.slice(0, end);
+}
+
+/**
  * HTTP client for the Hydra node REST API.
  *
  * Uses native `fetch` (Node 18+). Accepts 200 and 202 as success responses.
@@ -9,7 +22,7 @@ export class HydraHttpClient {
   private readonly baseUrl: string;
 
   constructor(baseUrl: string) {
-    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.baseUrl = stripTrailingSlashes(baseUrl);
   }
 
   /**
