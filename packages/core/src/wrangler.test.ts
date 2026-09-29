@@ -622,6 +622,27 @@ describe('Wrangler', () => {
   // incrementalCommit
   // -------------------------------------------------------------------------
 
+  describe('BLOCKFROST_API_KEY', () => {
+    afterEach(() => {
+      vi.stubEnv('BLOCKFROST_API_KEY', 'test-key');
+    });
+
+    it('is not required to construct a Wrangler', () => {
+      vi.stubEnv('BLOCKFROST_API_KEY', '');
+      expect(() => new Wrangler('http://localhost:4001')).not.toThrow();
+    });
+
+    it('is required when a layer 1 call needs the provider', async () => {
+      vi.stubEnv('BLOCKFROST_API_KEY', '');
+      const w = new Wrangler('http://localhost:4001');
+      const p = w.incrementalCommit({ utxos: [{ txHash: 'inc123', outputIndex: 0 }] }, 10000);
+      const rejection = expect(p).rejects.toThrow('Missing required environment variable: BLOCKFROST_API_KEY');
+      await flushAsync();
+      emitMessage({ tag: 'Greetings', headStatus: 'Open' as HeadStatus });
+      await rejection;
+    });
+  });
+
   describe('incrementalCommit()', () => {
     const singleUtxo = { utxos: [{ txHash: 'inc123', outputIndex: 0 }] };
 
