@@ -16,7 +16,7 @@ The SDK reads configuration from environment variables at the point of use (neve
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `BLOCKFROST_API_KEY` | Yes (Wrangler) | Blockfrost project ID for L1 chain queries |
+| `BLOCKFROST_API_KEY` | Yes (Wrangler layer 1 operations) | Blockfrost project ID for L1 chain queries |
 | `HYDRA_API_URL` | Yes (UTxO queries) | Hydra node HTTP API endpoint (e.g. `http://localhost:4001`) |
 | `HYDRA_WS_URL` | Yes (Wrangler) | Hydra node WebSocket endpoint (e.g. `ws://localhost:4001`) |
 | `HYDRA_ADMIN_KEY_FILE` | One required | Path to a Cardano `.sk` signing key file |
