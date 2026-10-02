@@ -183,4 +183,68 @@ describe('Provisioner', () => {
     const prov = new Provisioner(makeConfig(root));
     await expect(prov.purgeInstance('preprod', 'ghost')).resolves.toBeUndefined();
   });
+
+  describe('rejects path-traversal identifiers', () => {
+    const traversalNetwork = '../../etc';
+    const traversalInstance = '../../../etc/passwd';
+
+    it('setExpressImage', () => {
+      const prov = new Provisioner(makeConfig(root));
+      expect(() => prov.setExpressImage(traversalNetwork, 'alpha', 'img')).toThrow(/Invalid network/);
+      expect(() => prov.setExpressImage('preprod', traversalInstance, 'img')).toThrow(/Invalid instance/);
+    });
+
+    it('setHeadParams', () => {
+      const prov = new Provisioner(makeConfig(root));
+      expect(() => prov.setHeadParams(traversalNetwork, 'alpha', { contestationPeriod: 1 })).toThrow(/Invalid network/);
+    });
+
+    it('readInstanceEnv', () => {
+      const prov = new Provisioner(makeConfig(root));
+      expect(() => prov.readInstanceEnv(traversalNetwork, 'alpha')).toThrow(/Invalid network/);
+      expect(() => prov.readInstanceEnv('preprod', traversalInstance)).toThrow(/Invalid instance/);
+    });
+
+    it('readAdminAddress', () => {
+      const prov = new Provisioner(makeConfig(root));
+      expect(() => prov.readAdminAddress(traversalNetwork, 'alpha')).toThrow(/Invalid network/);
+      expect(() => prov.readAdminAddress('preprod', traversalInstance)).toThrow(/Invalid instance/);
+    });
+
+    it('instanceEnvExists', () => {
+      const prov = new Provisioner(makeConfig(root));
+      expect(() => prov.instanceEnvExists(traversalNetwork, 'alpha')).toThrow(/Invalid network/);
+    });
+
+    it('purgeInstance', async () => {
+      const prov = new Provisioner(makeConfig(root));
+      await expect(prov.purgeInstance(traversalNetwork, 'alpha')).rejects.toThrow(/Invalid network/);
+    });
+  });
+
+  it('still provisions with valid identifiers after the guard is in place', () => {
+    const envPath = join(root, '.preprod.alpha.env');
+    writeFileSync(
+      envPath,
+      [
+        'API_PORT=4102',
+        'EXPRESS_PORT=3102',
+        'LISTEN_PORT=5102',
+        'TRP_PORT=8266',
+        'MONITORING_PORT=6102',
+        'X_API_KEY=uuid-123',
+      ].join('\n'),
+    );
+    const keysDir = join(root, 'data', 'preprod', 'instances', 'alpha', 'keys');
+    mkdirSync(keysDir, { recursive: true });
+    writeFileSync(join(keysDir, 'alpha.cardano.addr'), 'addr_test1qrxyz\n');
+
+    const prov = new Provisioner(makeConfig(root));
+    prov.setExpressImage('preprod', 'alpha', 'ghcr.io/test:v1');
+    prov.setHeadParams('preprod', 'alpha', { contestationPeriod: 300 });
+
+    expect(prov.instanceEnvExists('preprod', 'alpha')).toBe(true);
+    expect(prov.readAdminAddress('preprod', 'alpha')).toBe('addr_test1qrxyz');
+    expect(prov.readInstanceEnv('preprod', 'alpha').apiKey).toBe('uuid-123');
+  });
 });

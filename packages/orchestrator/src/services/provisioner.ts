@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
 import type { OrchestratorConfig } from '../config.js';
+import { assertSafeIdentifier, safeJoin } from '../lib/safe-path.js';
 import type { ParsedInstanceEnv } from '../types.js';
 
 /**
@@ -96,7 +96,9 @@ export class Provisioner {
 
   /** Read the admin bech32 address from the generated cardano.addr file. */
   readAdminAddress(network: string, instance: string): string {
-    const addrPath = join(
+    assertSafeIdentifier(network, 'network');
+    assertSafeIdentifier(instance, 'instance');
+    const addrPath = safeJoin(
       this.config.projectRoot,
       'data',
       network,
@@ -140,7 +142,9 @@ export class Provisioner {
   // ── Internal helpers ────────────────────────────────────────────────
 
   private instanceEnvPath(network: string, instance: string): string {
-    return join(this.config.projectRoot, `.${network}.${instance}.env`);
+    assertSafeIdentifier(network, 'network');
+    assertSafeIdentifier(instance, 'instance');
+    return safeJoin(this.config.projectRoot, `.${network}.${instance}.env`);
   }
 
   private make(network: string, instance: string, target: string): Promise<void> {
