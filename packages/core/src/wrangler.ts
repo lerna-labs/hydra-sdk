@@ -56,12 +56,11 @@ export class Wrangler {
   private mode: 'start' | 'shutdown' | undefined;
   public readonly ws: HydraWebSocket;
   public readonly http: HydraHttpClient;
-  private readonly blockfrost: BlockfrostProvider;
+  private blockfrostProvider?: BlockfrostProvider;
   private readonly monitor: HydraMonitor | null;
 
   constructor(url?: string, wsUrl?: string, monitor?: HydraMonitor) {
     const httpUrl = url || requireEnv('HYDRA_API_URL');
-    this.blockfrost = new BlockfrostProvider(requireEnv('BLOCKFROST_API_KEY'));
     this.http = new HydraHttpClient(httpUrl);
     this.monitor = monitor ?? null;
 
@@ -72,6 +71,12 @@ export class Wrangler {
       const socketUrl = wsUrl || requireEnv('HYDRA_WS_URL');
       this.ws = new HydraWebSocket(socketUrl);
     }
+  }
+
+  /** Built on first layer 1 use so layer 2 callers do not need `BLOCKFROST_API_KEY`. */
+  private get blockfrost(): BlockfrostProvider {
+    this.blockfrostProvider ??= new BlockfrostProvider(requireEnv('BLOCKFROST_API_KEY'));
+    return this.blockfrostProvider;
   }
 
   /**
