@@ -147,4 +147,50 @@ describe('HydraHttpClient', () => {
 
     expect(mockFetch).toHaveBeenCalledWith('http://localhost:4001/commit', expect.anything());
   });
+
+  it('leaves a baseUrl with no trailing slash unchanged', async () => {
+    const c = new HydraHttpClient('http://localhost:4001');
+    mockFetch.mockResolvedValueOnce(jsonResponse({ cborHex: 'abc' }));
+
+    await c.buildCommit({});
+
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost:4001/commit', expect.anything());
+  });
+
+  it('strips a single trailing slash from baseUrl', async () => {
+    const c = new HydraHttpClient('http://localhost:4001/');
+    mockFetch.mockResolvedValueOnce(jsonResponse({ cborHex: 'abc' }));
+
+    await c.buildCommit({});
+
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost:4001/commit', expect.anything());
+  });
+
+  it('strips a long run of trailing slashes without pathological slowdown', async () => {
+    const baseUrl = `http://localhost:4001${'/'.repeat(200_000)}`;
+    const start = performance.now();
+    const c = new HydraHttpClient(baseUrl);
+    const elapsed = performance.now() - start;
+
+    mockFetch.mockResolvedValueOnce(jsonResponse({ cborHex: 'abc' }));
+    await c.buildCommit({});
+
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost:4001/commit', expect.anything());
+    expect(elapsed).toBeLessThan(1000);
+  });
+
+  it('handles a long run of slashes followed by a non-slash suffix without pathological slowdown', async () => {
+    // Adversarial shape for the vulnerable `/\/+$/` pattern: many '/' characters
+    // that are not all anchored at the very end of the string.
+    const baseUrl = `http://localhost:4001${'/'.repeat(200_000)}x`;
+    const start = performance.now();
+    const c = new HydraHttpClient(baseUrl);
+    const elapsed = performance.now() - start;
+
+    mockFetch.mockResolvedValueOnce(jsonResponse({ cborHex: 'abc' }));
+    await c.buildCommit({});
+
+    expect(mockFetch).toHaveBeenCalledWith(`${baseUrl}/commit`, expect.anything());
+    expect(elapsed).toBeLessThan(1000);
+  });
 });

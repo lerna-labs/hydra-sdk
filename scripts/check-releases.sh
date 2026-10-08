@@ -177,7 +177,6 @@ check_ghcr_commit() {
 # ── npm dependencies ─────────────────────────────────────────────────
 
 check_npm "@meshsdk/core" "beta"
-check_npm "@meshsdk/hydra" "beta"
 check_npm "@meshsdk/core-csl" "beta"
 check_npm "@emurgo/cardano-serialization-lib-nodejs"
 check_npm "@emurgo/cardano-message-signing-nodejs"
