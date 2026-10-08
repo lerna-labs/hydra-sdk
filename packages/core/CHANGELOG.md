@@ -1,5 +1,13 @@
 # @lerna-labs/hydra-sdk
 
+## 2.0.2
+
+### Patch Changes
+
+- dcee326: `HydraHttpClient` no longer uses a regular expression to strip trailing slashes from the base URL passed to its constructor. The pattern could take quadratic time on a URL containing a long run of `/` characters, so a caller passing an unbounded string could tie up the event loop. The trailing slashes are now removed with a linear scan that runs in time proportional to the input length regardless of its shape.
+- 7b80d4f: `Wrangler` no longer requires `BLOCKFROST_API_KEY` at construction. The Blockfrost provider is now created on the first layer 1 operation (`incrementalCommit` and the deposit methods), which still throws `Missing required environment variable: BLOCKFROST_API_KEY` when the variable is unset. Layer 2 only callers can construct and use a `Wrangler` without a Blockfrost key.
+- 680dd88: Move `@meshsdk/core` and `@meshsdk/core-cst` from the exact pin 1.9.0-beta.99 to the exact pin 1.9.1. The npm CLI no longer ships in the package's dependency tree, so consumers no longer install a bundled copy of `ip-address` or `undici` through it.
+
 ## 2.0.1
 
 ### Patch Changes
