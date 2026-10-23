@@ -72,7 +72,7 @@
     "libsodium-wrappers-sumo": "0.7.15",
     "brace-expansion@1": "^1.1.21",
     "brace-expansion@2": "^2.1.7",
-    "ip-address": "^10.7.2",
+    "ip-address": "^10.7.4",
     "undici": "^6.28.1"
   },
   "dependencies": {
