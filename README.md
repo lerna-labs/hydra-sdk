@@ -49,6 +49,18 @@ npm run api:extract  # Rebuild API surface snapshot
 npm run docs:api     # Generate API reference docs (typedoc)
 ```
 
+### Monitoring
+
+`make monitoring-start` runs Prometheus, Grafana, node-exporter and cAdvisor from `docker/docker-compose.monitoring.yml`. Image versions are set by `PROMETHEUS_IMAGE`, `GRAFANA_IMAGE`, `NODE_EXPORTER_IMAGE` and `CADVISOR_IMAGE` in `.env` (defaults in `.example.env`).
+
+Set `GRAFANA_ADMIN_PASSWORD` in `.env` before starting. The stack refuses to start while it is empty or `admin`.
+
+Grafana stores the admin password in its database on first start, so changing `GRAFANA_ADMIN_PASSWORD` does not change the password of an existing `grafana-data` volume. Reset it with:
+
+```bash
+docker exec grafana grafana cli admin reset-admin-password "$GRAFANA_ADMIN_PASSWORD"
+```
+
 ### Project Structure
 
 ```
