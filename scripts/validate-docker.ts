@@ -367,7 +367,7 @@ function checkMonitoringCompose(): CheckResult[] {
       const varMatch = imageVal.match(/^\$\{([A-Z0-9_]+)\}$/);
       if (!varMatch) {
         results.push({
-          severity: "warn",
+          severity: "error",
           category: "Monitoring",
           message: `Image \`${imageVal}\` must be a \${VAR} reference`,
           file: `${relFile}:${i + 1}`,
@@ -377,7 +377,7 @@ function checkMonitoringCompose(): CheckResult[] {
       const tag = exampleVars.get(varMatch[1])?.split(":").pop() ?? "";
       if (!/^v?\d+\.\d+\.\d+$/.test(tag)) {
         results.push({
-          severity: "warn",
+          severity: "error",
           category: "Monitoring",
           message: `\`${varMatch[1]}\` in \`.example.env\` must pin a full patch version (found \`${exampleVars.get(varMatch[1]) ?? "unset"}\`)`,
           file: `${relFile}:${i + 1}`,
@@ -386,7 +386,7 @@ function checkMonitoringCompose(): CheckResult[] {
     }
     if (/GRAFANA_ADMIN_PASSWORD:?-/.test(trimmed)) {
       results.push({
-        severity: "warn",
+        severity: "error",
         category: "Monitoring",
         message: "Grafana admin password must be required (`${GRAFANA_ADMIN_PASSWORD:?...}`), not defaulted",
         file: `${relFile}:${i + 1}`,
@@ -396,7 +396,7 @@ function checkMonitoringCompose(): CheckResult[] {
 
   if (!/GRAFANA_ADMIN_PASSWORD:\?/.test(content)) {
     results.push({
-      severity: "warn",
+      severity: "error",
       category: "Monitoring",
       message: "Grafana admin password is not marked required with `${GRAFANA_ADMIN_PASSWORD:?...}`",
       file: relFile,
