@@ -1,7 +1,7 @@
 services:
   prometheus:
     container_name: prometheus
-    image: prom/prometheus:latest
+    image: ${PROMETHEUS_IMAGE}
     restart: unless-stopped
     network_mode: host
     volumes:
@@ -11,12 +11,12 @@ services:
 
   grafana:
     container_name: grafana
-    image: grafana/grafana:latest
+    image: ${GRAFANA_IMAGE}
     restart: unless-stopped
     network_mode: host
     environment:
       - GF_SERVER_HTTP_PORT=${GRAFANA_PORT:-3333}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -25,7 +25,7 @@ services:
 
   node-exporter:
     container_name: node-exporter
-    image: prom/node-exporter:latest
+    image: ${NODE_EXPORTER_IMAGE}
     restart: unless-stopped
     network_mode: host
     pid: host
@@ -41,7 +41,7 @@ services:
 
   cadvisor:
     container_name: cadvisor
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ${CADVISOR_IMAGE}
     restart: unless-stopped
     network_mode: host
     privileged: true

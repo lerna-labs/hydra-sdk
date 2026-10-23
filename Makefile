@@ -97,6 +97,7 @@ MONITORING_TARGETS := monitoring-start monitoring-stop monitoring-down monitorin
 UTILITY_TARGETS := help check-hydra-keys gen-hydra-keys gen-cardano-keys gen-cardano-address gen-trp-config gen-tls-cert
 UTILITY_TARGETS += check-tls-cert _guard-network _guard-instance _abort-if-exists _check-key-exists _prepare-directories
 UTILITY_TARGETS += gen-instance-env reset-instance-counter create-instance extract-cardano-privkey append-admin-pk _assert-middleware
+UTILITY_TARGETS += _guard-grafana-password
 UTILITY_TARGETS += dolos-init dolos-logs
 UTILITY_TARGETS += test lint typecheck fmt check-releases validate-docker api-snapshot docs
 
@@ -178,7 +179,13 @@ ipfs-status:
 gen-prometheus-config:
 	@bash ./scripts/generate-prometheus-config.sh
 
-monitoring-start: gen-prometheus-config
+_guard-grafana-password:
+	@if [ -z "$${GRAFANA_ADMIN_PASSWORD:-}" ] || [ "$${GRAFANA_ADMIN_PASSWORD}" = "admin" ]; then \
+	  echo "❌ set GRAFANA_ADMIN_PASSWORD in .env (it must be non-empty and not 'admin')"; \
+	  exit 1; \
+	fi
+
+monitoring-start: _guard-grafana-password gen-prometheus-config
 	$(DOCKER_MONITORING) up -d
 
 monitoring-stop:
@@ -187,7 +194,7 @@ monitoring-stop:
 monitoring-down:
 	$(DOCKER_MONITORING) down -v
 
-monitoring-restart: gen-prometheus-config
+monitoring-restart: _guard-grafana-password gen-prometheus-config
 	$(DOCKER_MONITORING) up -d --force-recreate
 
 monitoring-logs:
