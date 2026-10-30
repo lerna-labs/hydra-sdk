@@ -25,7 +25,6 @@
     "docs:api": "typedoc",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:publish": "npm run build && node scripts/publish-packages.mjs",
     "changeset:snapshot": "changeset version --snapshot rc",
     "prepare": "husky"
   },
