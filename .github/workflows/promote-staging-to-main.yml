@@ -5,7 +5,7 @@ name: Promote staging to main
 # when staging is ready to release.
 #
 # Publishing itself lives in publish.yml (release-candidate previews from
-# staging, production releases from main). This workflow only opens the
+# staging, production releases from signed release tags). This workflow only opens the
 # promotion PR.
 on:
   push:

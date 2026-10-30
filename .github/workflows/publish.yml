@@ -1,11 +1,14 @@
 name: Publish
 
-# Single npm publisher for the monorepo, driven by the branch:
+# Single npm publisher for the monorepo, driven by the ref:
 #   staging -> release-candidate snapshots of the changed packages under the
 #              `rc` dist-tag
-#   main    -> production package releases via Changesets, published to `latest`
+#   main    -> opens and updates the Version Packages PR; publishes nothing
+#   tag     -> production release of the one package the tag names, published to
+#              `latest`. The tag is a signed annotated tag the maintainer creates
+#              and pushes by hand; automation never creates a tag.
 #
-# Both publish through npm trusted publishing (OIDC), so this one workflow file
+# Both publish paths use npm trusted publishing (OIDC), so this one workflow file
 # is the single registered trusted publisher for @lerna-labs/hydra-sdk and
 # @lerna-labs/hydra-proof, no NPM_TOKEN is stored, and every publish carries a
 # provenance attestation. The private @lerna-labs/hydra-orchestrator is ignored
@@ -13,6 +16,11 @@ name: Publish
 on:
   push:
     branches: [main, staging]
+    tags:
+      - "@lerna-labs/hydra-sdk@*"
+      - "@lerna-labs/hydra-proof@*"
+      - "!@lerna-labs/hydra-sdk@*-*"
+      - "!@lerna-labs/hydra-proof@*-*"
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -24,13 +32,12 @@ permissions:
   id-token: write
 
 jobs:
-  # Production release from main. changesets/action opens a Version Packages PR
-  # while changesets are pending; once that PR is merged (none pending), it
-  # builds and runs `changeset publish`, publishing each changed package to npm,
-  # pushing its tag, and creating the GitHub Release. Attributed to the Release
-  # Manager App.
+  # Version Packages PR maintenance on main. changesets/action opens and updates
+  # the PR while changesets are pending. It does not publish or tag: the
+  # maintainer tags the merged version commit, and the verify and publish jobs below take over.
+  # Attributed to the Release Manager App.
   release:
-    if: github.ref_name == 'main'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v3
@@ -58,10 +65,6 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      # Trusted publishing (OIDC) needs npm >= 11.5.1; node 22 ships npm 10.
-      - name: Upgrade npm for trusted publishing
-        run: npm install -g npm@11
-
       - run: npm ci
 
       - name: Open or update the Version Packages PR
@@ -74,25 +77,101 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      # Publish as a direct job step, not through changesets/action. Its `publish`
-      # runs the command under node's bundled npm (10.x on node 22), which signs
-      # provenance but cannot authenticate OIDC trusted publishing and 404s. A
-      # direct step uses the npm@11 we installed above, which does OIDC. The
-      # script skips packages whose version is already on npm, so this is a no-op
-      # except right after a Version Packages PR merges.
-      # Guarded on hasChangesets == 'false': when changesets are pending, the step above leaves the checkout on changeset-release/main with an unmerged version bump, and this step must not run against that tree.
-      - name: Publish released packages to npm
-        if: steps.changesets.outputs.hasChangesets == 'false'
+  # Verifies the pushed tag before anything is published from it. The
+  # `publish` job `needs:` this one.
+  verify:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      name: ${{ steps.verify.outputs.name }}
+      dir: ${{ steps.verify.outputs.dir }}
+      version: ${{ steps.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify the release tag
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: .github/scripts/verify-release-tag.sh "$TAG"
+
+  # Production release from a verified tag: publishes the package the tag names
+  # to npm, then creates the GitHub Release with its CHANGELOG section as notes,
+  # attributed to the Release Manager App.
+  #
+  # Publish as a direct job step, not through changesets/action. Its `publish`
+  # runs the command under node's bundled npm (10.x on node 22), which signs
+  # provenance but cannot authenticate OIDC trusted publishing and 404s. A
+  # direct step uses the npm@11 we installed, which does OIDC. `changeset
+  # publish` is never used: it creates tags.
+  publish:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_MANAGER_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_MANAGER_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing (OIDC) needs npm >= 11.5.1; node 22 ships npm 10.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@11
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Publish to npm
+        env:
+          NAME: ${{ needs.verify.outputs.name }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION already on npm; skipping publish"
+          else
+            npm publish -w "$NAME" --access public
+          fi
+
+      - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: node scripts/publish-packages.mjs
+          TAG: ${{ github.ref_name }}
+          DIR: ${{ needs.verify.outputs.dir }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; skipping"
+            exit 0
+          fi
+          notes="$RUNNER_TEMP/release-notes.md"
+          awk -v v="$VERSION" '$0 == "## " v { f = 1; next } /^## / { f = 0 } f' "$DIR/CHANGELOG.md" > "$notes"
+          if [ ! -s "$notes" ]; then
+            echo "::error::No CHANGELOG section for $VERSION in $DIR/CHANGELOG.md."
+            exit 1
+          fi
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$notes"
 
   # Release candidate from staging. Publishes a Changesets snapshot
   # (X.Y.Z-rc-<timestamp>) of the changed packages under the `rc` dist-tag so
   # downstreams can test unreleased changes. Nothing is committed; the `rc` tag
   # never moves `latest`. Skipped when there are no pending changesets.
   rc:
-    if: github.ref_name == 'staging'
+    if: github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

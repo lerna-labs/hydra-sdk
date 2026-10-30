@@ -49,6 +49,18 @@ npm run api:extract  # Rebuild API surface snapshot
 npm run docs:api     # Generate API reference docs (typedoc)
 ```
 
+### Monitoring
+
+`make monitoring-start` runs Prometheus, Grafana, node-exporter and cAdvisor from `docker/docker-compose.monitoring.yml`. Image versions are set by `PROMETHEUS_IMAGE`, `GRAFANA_IMAGE`, `NODE_EXPORTER_IMAGE` and `CADVISOR_IMAGE` in `.env`. An existing `.env` written before these variables existed must gain them, or every monitoring target fails with `service "grafana" has neither an image nor a build context specified`: copy the four image lines from `.example.env` into `.env`.
+
+Set `GRAFANA_ADMIN_PASSWORD` in `.env` before starting. The stack refuses to start while it is empty or `admin`.
+
+Grafana stores the admin password in its database on first start, so changing `GRAFANA_ADMIN_PASSWORD` does not change the password of an existing `grafana-data` volume. Reset it with:
+
+```bash
+grep '^GRAFANA_ADMIN_PASSWORD=' .env | cut -d= -f2- | docker exec -i grafana grafana cli admin reset-admin-password --password-from-stdin
+```
+
 ### Project Structure
 
 ```
@@ -72,6 +84,8 @@ keywords there. A referenced issue closes automatically once the change is promo
 
 See the [organization's CONTRIBUTING guide](https://github.com/lerna-labs/.github/blob/main/CONTRIBUTING.md)
 for everything else: filing issues, changelog entries, and the review process.
+
+Maintainers cut releases with a signed tag; see [docs/releasing.md](./docs/releasing.md).
 
 ## License
 
