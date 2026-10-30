@@ -8,7 +8,7 @@ const intros = {
   staging:
     "Merging this promotes the queued changes into `staging`, which publishes release-candidate previews of the changed packages to npm under the `rc` dist-tag. Version bumps are cut later, on `main`.",
   main:
-    "Merging this promotes the tested changes into `main`, where the Release Manager opens a Version Packages PR that bumps the package versions, publishes them to npm, and creates the GitHub Releases.",
+    "Merging this promotes the tested changes into `main`, where the Release Manager opens a Version Packages PR that bumps the package versions. Merging that PR publishes nothing: the maintainer then pushes a signed tag for each package, which publishes it to npm and creates its GitHub Release.",
 };
 const intro = intros[target] ?? "";
 

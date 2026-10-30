@@ -350,6 +350,69 @@ function checkComposeVariableUsage(): CheckResult[] {
   return results;
 }
 
+function checkMonitoringCompose(): CheckResult[] {
+  const results: CheckResult[] = [];
+  const file = join(DOCKER_DIR, "docker-compose.monitoring.yml");
+  const relFile = relative(ROOT, file);
+  const content = readFileSafe(file);
+  if (!content) return results;
+
+  const exampleVars = parseEnvFile(join(ROOT, ".example.env"));
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    const imageMatch = trimmed.match(/^image:\s*(.+)$/);
+    if (imageMatch) {
+      const imageVal = imageMatch[1].trim();
+      const varMatch = imageVal.match(/^\$\{([A-Z0-9_]+)\}$/);
+      if (!varMatch) {
+        results.push({
+          severity: "error",
+          category: "Monitoring",
+          message: `Image \`${imageVal}\` must be a \${VAR} reference`,
+          file: `${relFile}:${i + 1}`,
+        });
+        continue;
+      }
+      const tag = exampleVars.get(varMatch[1])?.split(":").pop() ?? "";
+      if (!/^v?\d+\.\d+\.\d+$/.test(tag)) {
+        results.push({
+          severity: "error",
+          category: "Monitoring",
+          message: `\`${varMatch[1]}\` in \`.example.env\` must pin a full patch version (found \`${exampleVars.get(varMatch[1]) ?? "unset"}\`)`,
+          file: `${relFile}:${i + 1}`,
+        });
+      }
+    }
+    if (/GRAFANA_ADMIN_PASSWORD:?-/.test(trimmed)) {
+      results.push({
+        severity: "error",
+        category: "Monitoring",
+        message: "Grafana admin password must be required (`${GRAFANA_ADMIN_PASSWORD:?...}`), not defaulted",
+        file: `${relFile}:${i + 1}`,
+      });
+    }
+  }
+
+  if (!/GRAFANA_ADMIN_PASSWORD:\?/.test(content)) {
+    results.push({
+      severity: "error",
+      category: "Monitoring",
+      message: "Grafana admin password is not marked required with `${GRAFANA_ADMIN_PASSWORD:?...}`",
+      file: relFile,
+    });
+  }
+
+  if (!results.some((r) => r.severity !== "pass")) {
+    results.push({
+      severity: "pass",
+      category: "Monitoring",
+      message: "Monitoring images are pinned to full versions and the Grafana password is required",
+    });
+  }
+  return results;
+}
+
 function checkEnvCrossReference(): CheckResult[] {
   const results: CheckResult[] = [];
   const composeFiles = getComposeFiles();
@@ -857,6 +920,7 @@ async function main() {
 
   results.push(...checkDockerfiles());
   results.push(...checkComposeVariableUsage());
+  results.push(...checkMonitoringCompose());
   results.push(...checkEnvCrossReference());
   results.push(...checkPortConflicts());
   results.push(...checkVolumeMounts());

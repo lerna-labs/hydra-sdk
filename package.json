@@ -25,7 +25,6 @@
     "docs:api": "typedoc",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:publish": "npm run build && node scripts/publish-packages.mjs",
     "changeset:snapshot": "changeset version --snapshot rc",
     "prepare": "husky"
   },
@@ -72,8 +71,8 @@
     "libsodium-wrappers-sumo": "0.7.15",
     "brace-expansion@1": "^1.1.21",
     "brace-expansion@2": "^2.1.7",
-    "ip-address": "^10.7.2",
-    "undici": "^6.28.1"
+    "ip-address": "^10.7.4",
+    "undici": "^6.29.1"
   },
   "dependencies": {
     "@emurgo/cardano-message-signing-nodejs": "^1.1.0",
