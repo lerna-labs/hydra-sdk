@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Verify a release tag before anything is published from it.
 # Usage: verify-release-tag.sh <tag>
-# Reads GITHUB_REPOSITORY and GH_TOKEN from the environment. Run it inside a
-# clone that has the tag and origin/main fetched. When GITHUB_OUTPUT is set it
-# also writes the package name, directory and version the tag names.
+# Reads GITHUB_REPOSITORY and GH_TOKEN from the environment, and GITHUB_SHA when
+# set. Run it inside a clone that has the tagged commit and origin/main fetched.
+# When GITHUB_OUTPUT is set it also writes the package name, directory and
+# version the tag names.
 set -euo pipefail
 
 TAG="${1:?usage: verify-release-tag.sh <tag>}"
@@ -29,19 +30,27 @@ type=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq .object.type) || fail "Tag $T
 [ "$type" = "tag" ] || fail "Tag $TAG is a lightweight tag (ref points at a $type). Create it with 'git tag -s'."
 object_sha=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq .object.sha)
 
-# 2. GitHub must report the tag object's signature as verified.
-verified=$(gh api "repos/$REPO/git/tags/$object_sha" --jq .verification.verified)
-if [ "$verified" != "true" ]; then
-  reason=$(gh api "repos/$REPO/git/tags/$object_sha" --jq .verification.reason)
-  fail "Tag $TAG signature is not verified by GitHub (reason: $reason)."
-fi
+# 2. Read the tag object once. GitHub must report its signature as verified,
+# and it must point directly at a commit (a tag of a tag is refused).
+tag_json=$(gh api "repos/$REPO/git/tags/$object_sha") || fail "Tag object $object_sha of $TAG could not be read."
+verified=$(printf '%s' "$tag_json" | jq -r '.verification.verified')
+reason=$(printf '%s' "$tag_json" | jq -r '.verification.reason')
+target_type=$(printf '%s' "$tag_json" | jq -r '.object.type')
+commit=$(printf '%s' "$tag_json" | jq -r '.object.sha')
+[ "$verified" = "true" ] || fail "Tag $TAG signature is not verified by GitHub (reason: $reason)."
+[ "$target_type" = "commit" ] || fail "Tag $TAG points at a $target_type, not a commit."
 
-# 3. The tagged commit must be an ancestor of origin/main.
-commit=$(git rev-parse "refs/tags/$TAG^{commit}") || fail "Tag $TAG is not fetched locally."
+# 3. The signed tag's commit must be the commit that was pushed (GITHUB_SHA),
+# or, outside a workflow run, the commit the tag names.
+expected="${GITHUB_SHA:-$commit}"
+[ "$commit" = "$expected" ] || fail "Signed tag $TAG points at $commit, but the pushed commit is $expected."
+git cat-file -e "$commit^{commit}" 2>/dev/null || fail "Commit $commit of tag $TAG is not present locally."
+
+# 4. That commit must be an ancestor of origin/main.
 git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null || fail "origin/main is not fetched."
 git merge-base --is-ancestor "$commit" refs/remotes/origin/main || fail "Tagged commit $commit is not an ancestor of origin/main."
 
-# 4. The tag version must equal the version in the tagged package's package.json.
+# 5. The tag version must equal the version in the tagged package's package.json.
 pkg_version=$(git show "$commit:$DIR/package.json" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version') || fail "Could not read $DIR/package.json at $commit."
 [ "$pkg_version" = "$VERSION" ] || fail "Tag version $VERSION does not match $DIR/package.json version $pkg_version at $commit."
 
