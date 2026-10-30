@@ -12,7 +12,7 @@ name: Backport release to lower branches
 on:
   push:
     tags:
-      # changeset publish tags each released package as <name>@<version>.
+      # The maintainer tags each released package as <name>@<version>.
       # Fire only on real releases (exclude prerelease/rc versions with a hyphen).
       - "@lerna-labs/hydra-sdk@*"
       - "@lerna-labs/hydra-proof@*"

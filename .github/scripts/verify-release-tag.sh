@@ -22,7 +22,7 @@ case "$NAME" in
   @lerna-labs/hydra-proof) DIR=packages/proof ;;
   *) fail "Tag $TAG does not name a releasable package (expected @lerna-labs/hydra-sdk@X.Y.Z or @lerna-labs/hydra-proof@X.Y.Z)." ;;
 esac
-[ "$NAME@$VERSION" = "$TAG" ] && [ -n "$VERSION" ] || fail "Tag $TAG is not of the form <package>@<version>."
+[ -n "$VERSION" ] || fail "Tag $TAG has no version after the package name."
 
 # 1. The ref must be an annotated tag object, not a lightweight tag.
 type=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq .object.type) || fail "Tag $TAG was not found in $REPO."

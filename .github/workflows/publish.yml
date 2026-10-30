@@ -77,8 +77,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
-  # Verifies the pushed tag before anything is published from it. Every job
-  # that publishes `needs:` this one.
+  # Verifies the pushed tag before anything is published from it. The
+  # `publish` job `needs:` this one.
   verify:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
