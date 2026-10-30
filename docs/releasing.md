@@ -31,10 +31,12 @@ and the workflow only verifies it and publishes from it.
    `.github/scripts/verify-release-tag.sh` and fails, so nothing publishes,
    unless all of these hold:
    - the ref is an annotated tag object, not a lightweight tag;
-   - GitHub reports the tag's signature as verified;
-   - the tagged commit is an ancestor of `main`;
+   - GitHub reports the tag's signature as verified, and the tag points
+     directly at a commit (a tag of a tag is refused);
+   - the signed tag's commit is the commit that was pushed;
+   - that commit is an ancestor of `main`;
    - the tag version equals the `version` in the tagged package's own
-     `package.json`.
+     `package.json` at that commit.
 4. The `publish` job then builds, publishes only the package the tag names to
    npm through trusted publishing, and creates the GitHub Release with that
    package's `CHANGELOG.md` section as the notes. It skips publishing a version
@@ -46,7 +48,8 @@ Pushes to `staging` still publish the `rc` snapshot, and pushes to `main` only
 open or update the Version Packages PR.
 
 To re-run the `verify` job's checks against a tag that has already been pushed,
-for example to see why a run failed, fetch `origin/main` and the tag, then run:
+for example to see why a run failed, fetch `origin/main` and the tagged
+commit, then run:
 
 ```bash
 GITHUB_REPOSITORY=lerna-labs/hydra-sdk GH_TOKEN=$(gh auth token) .github/scripts/verify-release-tag.sh @lerna-labs/hydra-sdk@X.Y.Z
