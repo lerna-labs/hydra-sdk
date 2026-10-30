@@ -85,6 +85,8 @@ keywords there. A referenced issue closes automatically once the change is promo
 See the [organization's CONTRIBUTING guide](https://github.com/lerna-labs/.github/blob/main/CONTRIBUTING.md)
 for everything else: filing issues, changelog entries, and the review process.
 
+Maintainers cut releases with a signed tag; see [docs/releasing.md](./docs/releasing.md).
+
 ## License
 
 [Apache-2.0](./LICENSE)
