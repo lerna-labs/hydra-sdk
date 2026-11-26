@@ -14,9 +14,9 @@ when a package is installed as someone else's dependency, so no entry below reac
 the published `@lerna-labs/hydra-sdk` or `@lerna-labs/hydra-proof`. What a consumer resolves is set
 by the dependency ranges the published packages and their dependencies declare.
 
-Before touching an entry, check whether the dependency that pulls the package in has since shipped
-a version that resolves to a patched copy on its own. If it has, bumping that dependency is
-preferable to carrying the override.
+Before touching an advisory-floor entry, check whether the packages that request it have since
+shipped versions whose declared ranges exclude the vulnerable versions. If they have, bumping those
+packages is preferable to carrying the override.
 
 ## Functional pins
 
